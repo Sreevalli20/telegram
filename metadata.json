@@ -1,0 +1,6 @@
+{
+  "name": "ATLAS — AI Financial Assistant",
+  "description": "Autonomous, senior-grade Telegram AI Financial Analyst providing real-time market intelligence, SEC filing research, earnings analysis, voice/document processing, and personalized memory.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
