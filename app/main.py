@@ -30,21 +30,20 @@ def validate_startup() -> bool:
     """
     Validate that all required configuration and dependencies are available.
     
-    Only truly fatal errors should return False. Optional integrations
-    should log warnings but allow startup to continue.
+    All validation is non-fatal for web service deployment. The FastAPI
+    server will start even if optional integrations are unavailable.
     
     Returns:
-        bool: True if validation passes, False only for unrecoverable errors
+        bool: Always True to allow FastAPI to start
     """
     logger.info("Starting application validation...")
     
-    # Validate TELEGRAM_BOT_TOKEN (required for production)
+    # Validate TELEGRAM_BOT_TOKEN (warn if missing, but don't fail startup)
     token = settings.telegram_bot_token
     if not token or not token.strip():
-        logger.error("TELEGRAM_BOT_TOKEN is required and not configured")
-        return False
+        logger.warning("TELEGRAM_BOT_TOKEN is not configured; Telegram bot will be disabled")
     else:
-        logger.info("TELEGRAM_BOT_TOKEN=***REDACTED***")
+        logger.info("TELEGRAM_BOT_TOKEN configured: True")
 
     # AI provider configuration is validated when actual AI calls are made.
     if settings.ai_provider == "openai" and not settings.openai_api_key:
@@ -77,10 +76,8 @@ async def lifespan(app: FastAPI):
 
     ensure_local_directories()
     
-    # Validate startup configuration
-    if not validate_startup():
-        logger.error("Startup validation failed. Exiting...")
-        sys.exit(1)
+    # Validate startup configuration (non-fatal)
+    validate_startup()
     
     # Create database tables
     try:

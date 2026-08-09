@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import Optional
+from pydantic import field_validator
+from typing import Optional, Union
 import os
 
 
@@ -43,6 +44,16 @@ class Settings(BaseSettings):
     max_file_size_mb: int = 20
     allowed_file_types: str = "pdf,png,jpg,jpeg"
     rate_limit_per_minute: int = 30
+    
+    @field_validator('webhook_mode', mode='before')
+    @classmethod
+    def parse_webhook_mode(cls, v: Union[bool, str]) -> bool:
+        """Parse webhook_mode from string or bool."""
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, str):
+            return v.lower() in ('true', '1', 'yes', 'on')
+        return bool(v)
     
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
