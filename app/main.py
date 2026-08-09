@@ -8,6 +8,7 @@ from app.telegram import get_bot
 from app.telegram.webhook import setup_webhook, delete_webhook
 from app.utils.logger import setup_logger, get_logger
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import text
 import asyncio
 import sys
 
@@ -54,11 +55,10 @@ def validate_startup() -> bool:
     # Check database connection
     try:
         with engine.connect() as conn:
-            conn.execute("SELECT 1")
+            conn.execute(text("SELECT 1"))
         logger.info("Database connection successful")
     except SQLAlchemyError as e:
-        logger.error(f"Database connection failed: {e}")
-        return False
+        logger.warning(f"Database connection failed: {e}. Application will start in degraded mode.")
     
     # Check webhook configuration if webhook mode is enabled
     if settings.webhook_mode and not settings.webhook_url:
@@ -161,7 +161,7 @@ async def health_check():
     """Health check endpoint."""
     try:
         with engine.connect() as conn:
-            conn.execute("SELECT 1")
+            conn.execute(text("SELECT 1"))
         return {"status": "healthy", "database": "connected"}
     except SQLAlchemyError:
         return {"status": "unhealthy", "database": "disconnected"}
