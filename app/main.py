@@ -35,14 +35,11 @@ def validate_startup() -> bool:
     """
     logger.info("Starting application validation...")
     
-    # Check required environment variables
-    if settings.webhook_mode and not settings.telegram_bot_token:
-        logger.error("TELEGRAM_BOT_TOKEN is required when WEBHOOK_MODE is enabled")
+    # Validate TELEGRAM_BOT_TOKEN (required for production)
+    token = settings.telegram_bot_token
+    if not token or not token.strip():
+        logger.error("TELEGRAM_BOT_TOKEN is required and not configured")
         return False
-
-    # Optional bot mode: warn but allow startup without a Telegram token
-    if not settings.webhook_mode and not settings.telegram_bot_token:
-        logger.warning("TELEGRAM_BOT_TOKEN is not configured; Telegram bot will remain disabled")
 
     # AI provider configuration is validated when actual AI calls are made.
     if settings.ai_provider == "openai" and not settings.openai_api_key:

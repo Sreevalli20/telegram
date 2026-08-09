@@ -1,4 +1,4 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional
 import os
 
@@ -6,20 +6,18 @@ import os
 class Settings(BaseSettings):
     """Application settings."""
     
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore"
+    )
+    
     # Telegram
     telegram_bot_token: Optional[str] = None
     
     # Database
     database_url: str = "sqlite:///./atlas.db"
-    
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        # Configure database path for Render production environment
-        if os.environ.get("RENDER") == "true":
-            # Use Render's persistent storage directory
-            data_dir = "/opt/render/project/data"
-            os.makedirs(data_dir, exist_ok=True)
-            self.database_url = f"sqlite:///{data_dir}/atlas.db"
     
     # AI Provider
     ai_provider: str = "openai"
@@ -46,9 +44,14 @@ class Settings(BaseSettings):
     allowed_file_types: str = "pdf,png,jpg,jpeg"
     rate_limit_per_minute: int = 30
     
-    class Config:
-        env_file = ".env"
-        case_sensitive = False
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # Configure database path for Render production environment
+        if os.environ.get("RENDER") == "true":
+            # Use Render's persistent storage directory
+            data_dir = "/opt/render/project/data"
+            os.makedirs(data_dir, exist_ok=True)
+            self.database_url = f"sqlite:///{data_dir}/atlas.db"
 
 
 _settings_instance: Optional[Settings] = None
