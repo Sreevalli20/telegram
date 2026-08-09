@@ -65,12 +65,6 @@ class Settings(BaseSettings):
             self.database_url = f"sqlite:///{data_dir}/atlas.db"
 
 
-_settings_instance: Optional[Settings] = None
-
-
 def get_settings() -> Settings:
-    """Get the singleton settings instance."""
-    global _settings_instance
-    if _settings_instance is None:
-        _settings_instance = Settings()
-    return _settings_instance
+    """Get a fresh settings instance that reads from current environment."""
+    return Settings()

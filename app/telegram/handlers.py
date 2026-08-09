@@ -5,9 +5,17 @@ from app.config.settings import get_settings
 from app.utils.security import validate_text_input, validate_file_size, validate_file_type, sanitize_filename, detect_prompt_injection, validate_stock_symbol
 from app.utils.logger import get_logger
 
-settings = get_settings()
-bot_service = BotService()
 logger = get_logger(__name__)
+
+# Initialize bot_service lazily to avoid early settings initialization
+_bot_service = None
+
+def get_bot_service():
+    """Get or create the bot service instance."""
+    global _bot_service
+    if _bot_service is None:
+        _bot_service = BotService()
+    return _bot_service
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -36,7 +44,7 @@ How can I assist you today?"""
     await update.message.reply_text(welcome_message, reply_markup=reply_markup)
     
     # Initialize user in database
-    await bot_service.initialize_user(user.id, user.username, user.first_name, user.last_name)
+    await get_bot_service().initialize_user(user.id, user.username, user.first_name, user.last_name)
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -84,7 +92,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     await update.message.chat.send_action("typing")
     
     # Process the message through bot service
-    response = await bot_service.process_text_message(user_id, message_text)
+    response = await get_bot_service().process_text_message(user_id, message_text)
     
     await update.message.reply_text(response)
 
@@ -141,7 +149,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await update.message.chat.send_action("typing")
     
     # Process the voice message
-    response = await bot_service.process_voice(user_id, voice)
+    response = await get_bot_service().process_voice(user_id, voice)
     
     await update.message.reply_text(response)
 
@@ -163,7 +171,7 @@ async def analyze_stock_command(update: Update, context: ContextTypes.DEFAULT_TY
     
     await update.message.chat.send_action("typing")
     
-    response = await bot_service.analyze_stock(user_id, symbol)
+    response = await get_bot_service().analyze_stock(user_id, symbol)
     await update.message.reply_text(response)
 
 
@@ -173,7 +181,7 @@ async def watchlist_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     
     await update.message.chat.send_action("typing")
     
-    response = await bot_service.get_watchlist(user_id)
+    response = await get_bot_service().get_watchlist(user_id)
     await update.message.reply_text(response)
 
 
@@ -201,7 +209,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await query.edit_message_text("Please send the stock symbol you want to analyze.")
     elif callback_data == "market_overview":
         await query.message.chat.send_action("typing")
-        response = await bot_service.get_market_overview(user_id)
+        response = await get_bot_service().get_market_overview(user_id)
         await query.edit_message_text(response)
     elif callback_data == "settings":
         keyboard = [
