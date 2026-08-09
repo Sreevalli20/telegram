@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 from sqlalchemy.orm import Session
 from app.models.notification import Notification
 from app.repositories.base_repository import BaseRepository

@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 from sqlalchemy.orm import Session
 from app.models.research import ResearchHistory
 from app.repositories.base_repository import BaseRepository

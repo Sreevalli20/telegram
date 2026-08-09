@@ -20,15 +20,13 @@ from app.ai.agents import (
 from app.ai.intent_detector import IntentDetector
 from app.ai.providers import OpenAIProvider, AnthropicProvider, GoogleProvider
 from app.config.settings import get_settings
-from app.services import (
-    WatchlistService,
-    AlertService,
-    DailyIntelligenceService,
-    VoiceService,
-    ImageService,
-    ExplanationService,
-    ResponseFormatter
-)
+from app.services.watchlist_service import WatchlistService
+from app.services.alert_service import AlertService
+from app.services.daily_intelligence_service import DailyIntelligenceService
+from app.services.voice_service import VoiceService
+from app.services.image_service import ImageService
+from app.services.explanation_service import ExplanationService
+from app.services.response_formatter import ResponseFormatter
 from app.workers.background_worker import BackgroundWorker
 
 

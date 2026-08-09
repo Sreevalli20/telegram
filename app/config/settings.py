@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     """Application settings."""
     
     # Telegram
-    telegram_bot_token: str
+    telegram_bot_token: Optional[str] = None
     
     # Database
     database_url: str = "sqlite:///./atlas.db"

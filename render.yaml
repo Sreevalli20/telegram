@@ -2,8 +2,10 @@ services:
   - type: web
     name: atlas-ai-financial-assistant
     env: python
-    buildCommand: pip install -r requirements.txt
+    pythonVersion: 3.12.10
+    buildCommand: pip install --no-cache-dir -r requirements.txt
     startCommand: python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
     envVars:
       - key: TELEGRAM_BOT_TOKEN
         sync: false
@@ -22,7 +24,7 @@ services:
       - key: MAX_CONVERSATION_HISTORY
         value: "50"
       - key: WEBHOOK_MODE
-        value: "true"
+        value: "false"
       - key: WEBHOOK_URL
         sync: false
       - key: WEBHOOK_SECRET

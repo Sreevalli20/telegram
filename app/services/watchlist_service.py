@@ -72,7 +72,7 @@ class WatchlistService:
             for item in watchlist_items
         ]
     
-    async def get_watchlist_with prices(self, user_id: int) -> Dict[str, Any]:
+    async def get_watchlist_with_prices(self, user_id: int) -> Dict[str, Any]:
         """Get watchlist with current prices."""
         watchlist_items = self.watchlist_repo.get_user_watchlist(user_id)
         

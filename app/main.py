@@ -1,3 +1,4 @@
+from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
@@ -15,6 +16,15 @@ setup_logger()
 logger = get_logger(__name__)
 
 
+def ensure_local_directories() -> None:
+    """Ensure local storage directories exist for SQLite and uploads."""
+    if settings.database_url.startswith("sqlite:///"):
+        file_path = Path(settings.database_url.replace("sqlite:///", ""))
+        if file_path.parent and not file_path.parent.exists():
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+    Path("uploads").mkdir(parents=True, exist_ok=True)
+
+
 def validate_startup() -> bool:
     """
     Validate that all required configuration and dependencies are available.
@@ -25,25 +35,21 @@ def validate_startup() -> bool:
     logger.info("Starting application validation...")
     
     # Check required environment variables
-    required_vars = {
-        "TELEGRAM_BOT_TOKEN": settings.telegram_bot_token,
-    }
-    
-    missing_vars = [var for var, value in required_vars.items() if not value]
-    if missing_vars:
-        logger.error(f"Missing required environment variables: {missing_vars}")
+    if settings.webhook_mode and not settings.telegram_bot_token:
+        logger.error("TELEGRAM_BOT_TOKEN is required when WEBHOOK_MODE is enabled")
         return False
-    
-    # Check AI provider configuration
+
+    # Optional bot mode: warn but allow startup without a Telegram token
+    if not settings.webhook_mode and not settings.telegram_bot_token:
+        logger.warning("TELEGRAM_BOT_TOKEN is not configured; Telegram bot will remain disabled")
+
+    # AI provider configuration is validated when actual AI calls are made.
     if settings.ai_provider == "openai" and not settings.openai_api_key:
-        logger.error("OPENAI_API_KEY is required when AI_PROVIDER is 'openai'")
-        return False
+        logger.warning("OPENAI_API_KEY is not configured; AI requests will fail until configured")
     elif settings.ai_provider == "anthropic" and not settings.anthropic_api_key:
-        logger.error("ANTHROPIC_API_KEY is required when AI_PROVIDER is 'anthropic'")
-        return False
+        logger.warning("ANTHROPIC_API_KEY is not configured; AI requests will fail until configured")
     elif settings.ai_provider == "google" and not settings.google_api_key:
-        logger.error("GOOGLE_API_KEY is required when AI_PROVIDER is 'google'")
-        return False
+        logger.warning("GOOGLE_API_KEY is not configured; AI requests will fail until configured")
     
     # Check database connection
     try:
@@ -67,6 +73,8 @@ def validate_startup() -> bool:
 async def lifespan(app: FastAPI):
     """Lifespan context manager for startup and shutdown events."""
     logger.info("Starting ATLAS application...")
+
+    ensure_local_directories()
     
     # Validate startup configuration
     if not validate_startup():
@@ -81,11 +89,13 @@ async def lifespan(app: FastAPI):
         logger.error(f"Failed to create database tables: {e}")
         sys.exit(1)
     
-    # Start Telegram bot
+    # Start Telegram bot if configured
     bot = get_bot()
     bot_task = None
-    
-    if settings.webhook_mode:
+
+    if bot is None:
+        logger.warning("Telegram bot is not configured; running without Telegram integration")
+    elif settings.webhook_mode:
         # Setup webhook for production
         webhook_success = await setup_webhook(bot)
         if webhook_success:
@@ -161,6 +171,12 @@ async def health_check():
 async def bot_status():
     """Check bot status."""
     bot = get_bot()
+    if bot is None:
+        return {
+            "status": "disabled",
+            "mode": "none",
+            "message": "Telegram bot is not configured"
+        }
     return {
         "status": "running" if bot.running else "stopped",
         "bot_id": bot.id,
@@ -175,7 +191,9 @@ async def telegram_webhook(request: Request):
     from json import loads
     
     bot = get_bot()
-    
+    if bot is None:
+        raise HTTPException(status_code=503, detail="Telegram bot is not configured")
+
     # Verify webhook secret if configured
     if settings.webhook_secret:
         secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
