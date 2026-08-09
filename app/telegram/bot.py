@@ -11,28 +11,33 @@ def create_bot():
     """Create and configure the Telegram bot application."""
     settings = get_settings()
     
-    # Validate token exists and is not empty/whitespace
+    # Get and validate token (get_bot() already checks, but double-check for safety)
     token = settings.telegram_bot_token
     if not token or not token.strip():
-        raise RuntimeError("TELEGRAM_BOT_TOKEN is not configured")
+        logger.error("TELEGRAM_BOT_TOKEN is not configured in create_bot()")
+        return None
     
     # Use stripped token
     token = token.strip()
     
-    application = Application.builder().token(token).build()
-    
-    # Add handlers
-    handlers = get_handlers()
-    for handler in handlers:
-        application.add_handler(handler)
-    
-    # Add callback query handler
-    application.add_handler(CallbackQueryHandler(button_callback))
-    
-    # Add error handler
-    application.add_error_handler(error_handler)
-    
-    return application
+    try:
+        application = Application.builder().token(token).build()
+        
+        # Add handlers
+        handlers = get_handlers()
+        for handler in handlers:
+            application.add_handler(handler)
+        
+        # Add callback query handler
+        application.add_handler(CallbackQueryHandler(button_callback))
+        
+        # Add error handler
+        application.add_error_handler(error_handler)
+        
+        return application
+    except Exception as e:
+        logger.error(f"Failed to create Telegram bot: {e}")
+        return None
 
 
 _bot_instance = None
