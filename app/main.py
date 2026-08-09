@@ -88,7 +88,6 @@ async def lifespan(app: FastAPI):
     
     # Start Telegram bot if configured
     bot = get_bot()
-    bot_task = None
 
     if bot is None:
         logger.warning("Telegram bot is not configured; running without Telegram integration")
@@ -99,11 +98,23 @@ async def lifespan(app: FastAPI):
             logger.info("Webhook mode enabled")
         else:
             logger.warning("Failed to setup webhook, falling back to polling")
-            bot_task = asyncio.create_task(bot.run_polling())
+            try:
+                await bot.initialize()
+                await bot.start()
+                await bot.updater.start_polling()
+                logger.info("Telegram polling started successfully")
+            except Exception as e:
+                logger.error(f"Failed to start Telegram polling: {e}")
     else:
         # Use polling for development
         logger.info("Polling mode enabled")
-        bot_task = asyncio.create_task(bot.run_polling())
+        try:
+            await bot.initialize()
+            await bot.start()
+            await bot.updater.start_polling()
+            logger.info("Telegram polling started successfully")
+        except Exception as e:
+            logger.error(f"Failed to start Telegram polling: {e}")
     
     logger.info("ATLAS application started successfully")
     
@@ -112,15 +123,17 @@ async def lifespan(app: FastAPI):
     # Shutdown
     logger.info("Shutting down ATLAS application...")
     
-    if bot_task:
-        bot_task.cancel()
-        try:
-            await bot_task
-        except asyncio.CancelledError:
-            pass
-    
-    if settings.webhook_mode:
-        await delete_webhook(bot)
+    if bot is not None:
+        if settings.webhook_mode:
+            await delete_webhook(bot)
+        else:
+            try:
+                await bot.updater.stop()
+                await bot.stop()
+                await bot.shutdown()
+                logger.info("Telegram bot shutdown successfully")
+            except Exception as e:
+                logger.error(f"Error during Telegram bot shutdown: {e}")
     
     logger.info("ATLAS application shutdown complete")
 
