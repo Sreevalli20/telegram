@@ -51,19 +51,31 @@ class BotService:
         self.voice_service = VoiceService()
         self.image_service = ImageService()
         self.explanation_service = ExplanationService(self.ai_provider)
+        
+        # Log AI provider status
+        if self.ai_provider is None:
+            from app.utils.logger import get_logger
+            logger = get_logger(__name__)
+            logger.warning("AI provider not configured. AI features will be unavailable.")
     
     def _get_ai_provider(self):
-        """Get the configured AI provider."""
+        """Get the configured AI provider. Returns None if no API key is available."""
         provider_name = self.settings.ai_provider.lower()
         
         if provider_name == "openai":
-            return OpenAIProvider(api_key=self.settings.openai_api_key)
+            if self.settings.openai_api_key:
+                return OpenAIProvider(api_key=self.settings.openai_api_key)
         elif provider_name == "anthropic":
-            return AnthropicProvider(api_key=self.settings.anthropic_api_key)
+            if self.settings.anthropic_api_key:
+                return AnthropicProvider(api_key=self.settings.anthropic_api_key)
         elif provider_name == "google":
-            return GoogleProvider(api_key=self.settings.google_api_key)
+            if self.settings.google_api_key:
+                return GoogleProvider(api_key=self.settings.google_api_key)
         else:
             raise ValueError(f"Unknown AI provider: {provider_name}")
+        
+        # No API key available for the configured provider
+        return None
     
     def _get_db_session(self):
         """Get a database session."""
@@ -224,6 +236,10 @@ class BotService:
         """Route intent to appropriate handler."""
         symbols = entities.get("symbols", [])
         
+        # Check if AI provider is available for AI-dependent intents
+        if self.ai_provider is None and intent in ["stock_lookup", "company_research", "market_analysis", "comparison", "news_request", "explanation", "document_chat", "daily_briefing"]:
+            return "🤖 AI features are not currently configured. Please configure an AI provider API key (OPENAI_API_KEY, ANTHROPIC_API_KEY, or GOOGLE_API_KEY) to use this feature."
+        
         if intent == "stock_lookup" and symbols:
             return await self._handle_stock_lookup(symbols[0])
         elif intent == "company_research" and symbols:
@@ -248,6 +264,8 @@ class BotService:
             return await self._handle_daily_briefing(user_id)
         
         # Default to conversation agent
+        if self.ai_provider is None:
+            return "🤖 AI features are not currently configured. Please configure an AI provider API key (OPENAI_API_KEY, ANTHROPIC_API_KEY, or GOOGLE_API_KEY) to use this feature."
         return await self.conversation_agent.process_message(
             message_text, history, user_context
         )

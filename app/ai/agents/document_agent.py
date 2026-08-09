@@ -7,7 +7,7 @@ from io import BytesIO
 class DocumentAgent:
     """Agent for document analysis and processing with PDF support."""
     
-    def __init__(self, ai_provider: BaseAIProvider):
+    def __init__(self, ai_provider: Optional[BaseAIProvider] = None):
         self.ai_provider = ai_provider
         self.document_context = {}  # Store document context for chat
     

@@ -6,7 +6,7 @@ from app.ai.providers import BaseAIProvider
 class ExplanationService:
     """Service for explaining financial concepts clearly and effectively."""
     
-    def __init__(self, ai_provider: BaseAIProvider):
+    def __init__(self, ai_provider: Optional[BaseAIProvider] = None):
         self.ai_provider = ai_provider
         self.common_concepts = self._load_common_concepts()
     

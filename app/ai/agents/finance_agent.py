@@ -7,7 +7,7 @@ from app.utils.ai_safety import get_safety_context, validate_financial_response
 class FinanceAgent:
     """Agent for financial research and analysis with real data integration."""
     
-    def __init__(self, ai_provider: BaseAIProvider):
+    def __init__(self, ai_provider: Optional[BaseAIProvider] = None):
         self.ai_provider = ai_provider
         self.market_data = MarketDataService()
         self.company_data = CompanyDataService()

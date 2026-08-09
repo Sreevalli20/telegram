@@ -6,10 +6,23 @@ from app.ai.providers.base_provider import BaseAIProvider
 class OpenAIProvider(BaseAIProvider):
     """OpenAI provider implementation."""
     
-    def __init__(self, api_key: str, model: str = "gpt-4o"):
+    def __init__(self, api_key: Optional[str] = None, model: str = "gpt-4o"):
         super().__init__(api_key)
-        self.client = AsyncOpenAI(api_key=api_key)
         self.model = model
+        self._client = None
+    
+    def _ensure_client(self):
+        """Lazy initialization of OpenAI client."""
+        if self._client is None:
+            if not self.api_key:
+                raise ValueError("OPENAI_API_KEY is not configured. Please set the OPENAI_API_KEY environment variable to use OpenAI features.")
+            self._client = AsyncOpenAI(api_key=self.api_key)
+        return self._client
+    
+    @property
+    def client(self):
+        """Get the OpenAI client (lazy initialization)."""
+        return self._ensure_client()
     
     async def generate_response(
         self,

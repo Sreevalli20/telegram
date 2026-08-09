@@ -6,7 +6,7 @@ from app.ai.intent_detector import IntentDetector
 class ConversationAgent:
     """Agent for handling conversational interactions with context awareness and follow-up intelligence."""
     
-    def __init__(self, ai_provider: BaseAIProvider):
+    def __init__(self, ai_provider: Optional[BaseAIProvider] = None):
         self.ai_provider = ai_provider
         self.intent_detector = IntentDetector()
         self.conversation_history = {}  # Store conversation history per user

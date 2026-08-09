@@ -6,10 +6,23 @@ from app.ai.providers.base_provider import BaseAIProvider
 class AnthropicProvider(BaseAIProvider):
     """Anthropic (Claude) provider implementation."""
     
-    def __init__(self, api_key: str, model: str = "claude-3-5-sonnet-20241022"):
+    def __init__(self, api_key: Optional[str] = None, model: str = "claude-3-5-sonnet-20241022"):
         super().__init__(api_key)
-        self.client = AsyncAnthropic(api_key=api_key)
         self.model = model
+        self._client = None
+    
+    def _ensure_client(self):
+        """Lazy initialization of Anthropic client."""
+        if self._client is None:
+            if not self.api_key:
+                raise ValueError("ANTHROPIC_API_KEY is not configured. Please set the ANTHROPIC_API_KEY environment variable to use Anthropic features.")
+            self._client = AsyncAnthropic(api_key=self.api_key)
+        return self._client
+    
+    @property
+    def client(self):
+        """Get the Anthropic client (lazy initialization)."""
+        return self._ensure_client()
     
     async def generate_response(
         self,

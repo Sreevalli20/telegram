@@ -7,7 +7,7 @@ import json
 class MemoryAgent:
     """Agent for managing user memory and personalization with enhanced intelligence."""
     
-    def __init__(self, ai_provider: BaseAIProvider):
+    def __init__(self, ai_provider: Optional[BaseAIProvider] = None):
         self.ai_provider = ai_provider
         self.user_memories = {}  # In-memory cache (in production, use database)
         self.conversation_contexts = {}  # Track conversation contexts per user

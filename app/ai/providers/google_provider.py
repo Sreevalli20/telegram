@@ -6,11 +6,24 @@ from app.ai.providers.base_provider import BaseAIProvider
 class GoogleProvider(BaseAIProvider):
     """Google (Gemini) provider implementation."""
     
-    def __init__(self, api_key: str, model: str = "gemini-1.5-pro"):
+    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-1.5-pro"):
         super().__init__(api_key)
-        genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel(model)
         self.model_name = model
+        self._model = None
+    
+    def _ensure_model(self):
+        """Lazy initialization of Google model."""
+        if self._model is None:
+            if not self.api_key:
+                raise ValueError("GOOGLE_API_KEY is not configured. Please set the GOOGLE_API_KEY environment variable to use Google features.")
+            genai.configure(api_key=self.api_key)
+            self._model = genai.GenerativeModel(self.model_name)
+        return self._model
+    
+    @property
+    def model(self):
+        """Get the Google model (lazy initialization)."""
+        return self._ensure_model()
     
     async def generate_response(
         self,

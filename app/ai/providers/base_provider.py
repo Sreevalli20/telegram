@@ -5,7 +5,7 @@ from typing import Optional, Dict, Any
 class BaseAIProvider(ABC):
     """Abstract base class for AI providers."""
     
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: Optional[str] = None):
         self.api_key = api_key
     
     @abstractmethod
