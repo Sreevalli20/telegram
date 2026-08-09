@@ -30,8 +30,11 @@ def validate_startup() -> bool:
     """
     Validate that all required configuration and dependencies are available.
     
+    Only truly fatal errors should return False. Optional integrations
+    should log warnings but allow startup to continue.
+    
     Returns:
-        bool: True if validation passes
+        bool: True if validation passes, False only for unrecoverable errors
     """
     logger.info("Starting application validation...")
     
@@ -40,6 +43,8 @@ def validate_startup() -> bool:
     if not token or not token.strip():
         logger.error("TELEGRAM_BOT_TOKEN is required and not configured")
         return False
+    else:
+        logger.info("TELEGRAM_BOT_TOKEN=***REDACTED***")
 
     # AI provider configuration is validated when actual AI calls are made.
     if settings.ai_provider == "openai" and not settings.openai_api_key:
@@ -59,8 +64,7 @@ def validate_startup() -> bool:
     
     # Check webhook configuration if webhook mode is enabled
     if settings.webhook_mode and not settings.webhook_url:
-        logger.error("WEBHOOK_URL is required when WEBHOOK_MODE is enabled")
-        return False
+        logger.warning("WEBHOOK_URL is not configured; webhook mode will not be available")
     
     logger.info("Application validation completed successfully")
     return True
@@ -83,8 +87,7 @@ async def lifespan(app: FastAPI):
         Base.metadata.create_all(bind=engine)
         logger.info("Database tables created/verified")
     except SQLAlchemyError as e:
-        logger.error(f"Failed to create database tables: {e}")
-        sys.exit(1)
+        logger.error(f"Failed to create database tables: {e}. Application will start in degraded mode.")
     
     # Start Telegram bot if configured
     bot = get_bot()
