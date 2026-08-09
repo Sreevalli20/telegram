@@ -14,15 +14,14 @@ RUN mkdir -p /app/data /app/uploads
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
-ENV PORT=8000
 ENV DATABASE_URL=sqlite:///./data/atlas.db
 
-# Expose port for webhook
+# Expose port for webhook (Render will set the actual PORT)
 EXPOSE 8000
 
-# Health check
+# Health check using PORT environment variable
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import requests; requests.get('http://localhost:8000/health')"
+    CMD python -c "import requests; import os; port = os.environ.get('PORT', '8000'); requests.get(f'http://0.0.0.0:{port}/health')"
 
-# Run the application
-CMD ["sh", "-c", "python -m uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# Run the application using Render's PORT environment variable
+CMD ["sh", "-c", "python -m uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]
