@@ -26,6 +26,7 @@ apscheduler==3.10.4
 # Utilities
 python-dotenv==1.0.1
 requests==2.32.3
+python-multipart==0.0.9
 
 # Document Processing (Python 3.12 compatible with prebuilt wheels)
 pypdf==5.1.0
