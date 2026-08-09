@@ -8,16 +8,15 @@ import os
 logger = get_logger(__name__)
 
 
-def create_bot():
-    """Create and configure the Telegram bot application."""
-    settings = get_settings()
+def create_bot(token: str):
+    """Create and configure the Telegram bot application.
     
-    # Get and validate token - prioritize direct environment read
-    token = settings.telegram_bot_token or os.environ.get("TELEGRAM_BOT_TOKEN")
-    if not token or not token.strip():
-        logger.error("TELEGRAM_BOT_TOKEN is not configured in create_bot()")
-        return None
-    
+    Args:
+        token: The Telegram bot token
+        
+    Returns:
+        The configured Telegram Application instance or None if creation fails
+    """
     # Use stripped token
     token = token.strip()
     
@@ -49,16 +48,16 @@ def get_bot():
     global _bot_instance
     if _bot_instance is None:
         logger.info("Telegram bot initialization attempted")
-        settings = get_settings()
         
-        # Check if token is configured - prioritize direct environment read
-        token = settings.telegram_bot_token or os.environ.get("TELEGRAM_BOT_TOKEN")
+        # Direct environment read to avoid any Pydantic issues
+        token = os.environ.get("TELEGRAM_BOT_TOKEN")
         
         if not token or not token.strip():
             logger.warning("TELEGRAM_BOT_TOKEN is not configured; bot will remain disabled")
             return None
         
-        _bot_instance = create_bot()
+        logger.info("Token found, proceeding with bot creation")
+        _bot_instance = create_bot(token)
         
         if _bot_instance is not None:
             logger.info("Telegram bot initialized successfully")
