@@ -2,9 +2,12 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, CommandHandler, MessageHandler, filters
 from app.services.bot_service import BotService
 from app.config.settings import get_settings
+from app.utils.security import validate_text_input, validate_file_size, validate_file_type, sanitize_filename, detect_prompt_injection, validate_stock_symbol
+from app.utils.logger import get_logger
 
 settings = get_settings()
 bot_service = BotService()
+logger = get_logger(__name__)
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -64,6 +67,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     user_id = update.effective_user.id
     message_text = update.message.text
     
+    # Validate input
+    is_valid, error = validate_text_input(message_text)
+    if not is_valid:
+        await update.message.reply_text(f"⚠️ {error}")
+        return
+    
+    # Check for prompt injection
+    is_suspicious, reason = detect_prompt_injection(message_text)
+    if is_suspicious:
+        logger.warning(f"Prompt injection attempt by user {user_id}: {reason}")
+        await update.message.reply_text("I'm sorry, I cannot process that request.")
+        return
+    
     # Send typing indicator
     await update.message.chat.send_action("typing")
     
@@ -78,10 +94,20 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     user_id = update.effective_user.id
     document = update.message.document
     
-    # Check if it's a PDF
-    if document.mime_type != "application/pdf":
-        await update.message.reply_text("⚠️ Currently, I only support PDF documents.")
+    # Validate file size
+    is_valid, error = validate_file_size(document.file_size)
+    if not is_valid:
+        await update.message.reply_text(f"⚠️ {error}")
         return
+    
+    # Validate file type
+    is_valid, error = validate_file_type(document.file_name, document.mime_type)
+    if not is_valid:
+        await update.message.reply_text(f"⚠️ {error}")
+        return
+    
+    # Sanitize filename
+    safe_filename = sanitize_filename(document.file_name)
     
     # Send typing indicator
     await update.message.chat.send_action("typing")
@@ -128,6 +154,12 @@ async def analyze_stock_command(update: Update, context: ContextTypes.DEFAULT_TY
     
     symbol = context.args[0]
     user_id = update.effective_user.id
+    
+    # Validate stock symbol
+    is_valid, error = validate_stock_symbol(symbol)
+    if not is_valid:
+        await update.message.reply_text(f"⚠️ {error}")
+        return
     
     await update.message.chat.send_action("typing")
     

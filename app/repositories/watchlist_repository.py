@@ -59,3 +59,45 @@ class WatchlistRepository(BaseRepository[CompanyWatchlist]):
             self.update(item, is_active=False)
             return True
         return False
+    
+    def set_price_alert(
+        self,
+        user_id: int,
+        symbol: str,
+        alert_above: Optional[float] = None,
+        alert_below: Optional[float] = None
+    ) -> Optional[CompanyWatchlist]:
+        """Set price alerts for a watchlist item."""
+        item = self.get_by_symbol(user_id, symbol)
+        if item:
+            return self.update(
+                item,
+                alert_price_above=alert_above,
+                alert_price_below=alert_below
+            )
+        return None
+    
+    def get_items_with_alerts(self, user_id: int) -> List[CompanyWatchlist]:
+        """Get watchlist items that have price alerts set."""
+        return (
+            self.db.query(CompanyWatchlist)
+            .filter(
+                CompanyWatchlist.user_id == user_id,
+                CompanyWatchlist.is_active == True,
+                (CompanyWatchlist.alert_price_above.isnot(None)) |
+                (CompanyWatchlist.alert_price_below.isnot(None))
+            )
+            .all()
+        )
+    
+    def update_watchlist_notes(
+        self,
+        user_id: int,
+        symbol: str,
+        notes: str
+    ) -> Optional[CompanyWatchlist]:
+        """Update notes for a watchlist item."""
+        item = self.get_by_symbol(user_id, symbol)
+        if item:
+            return self.update(item, notes=notes)
+        return None

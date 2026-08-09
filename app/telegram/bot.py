@@ -1,8 +1,11 @@
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler
 from app.config.settings import get_settings
 from app.telegram.handlers import get_handlers, button_callback
+from app.telegram.middleware import error_handler
+from app.utils.logger import get_logger
 
 settings = get_settings()
+logger = get_logger(__name__)
 
 
 def create_bot():
@@ -16,6 +19,9 @@ def create_bot():
     
     # Add callback query handler
     application.add_handler(CallbackQueryHandler(button_callback))
+    
+    # Add error handler
+    application.add_error_handler(error_handler)
     
     return application
 
