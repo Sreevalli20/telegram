@@ -94,10 +94,20 @@ async def lifespan(app: FastAPI):
     else:
         # Production webhook mode - NO polling fallback
         if settings.webhook_mode:
+            # Initialize the Application for webhook mode
+            logger.info("Starting Telegram bot initialization for webhook mode...")
+            await bot.initialize()
+            logger.info("Telegram bot initialized successfully")
+            
+            logger.info("Starting Telegram bot...")
+            await bot.start()
+            logger.info("Telegram bot started successfully")
+            
             # Setup webhook for production
             webhook_success = await setup_webhook(bot)
             if webhook_success:
                 logger.info("Webhook mode enabled - Telegram will receive updates via webhook")
+                logger.info("Telegram Application is ready to process webhook updates")
             else:
                 logger.error("Failed to setup webhook - Telegram bot will not receive updates")
         else:
@@ -131,6 +141,15 @@ async def lifespan(app: FastAPI):
             # Delete webhook to clean up Telegram configuration
             await delete_webhook(bot)
             logger.info("Webhook deleted during shutdown")
+            
+            # Stop and shutdown the Application
+            try:
+                await bot.stop()
+                logger.info("Telegram bot stopped")
+                await bot.shutdown()
+                logger.info("Telegram bot shutdown successfully")
+            except Exception as e:
+                logger.error(f"Error during Telegram bot shutdown: {e}")
         else:
             # Stop polling in development mode
             try:
