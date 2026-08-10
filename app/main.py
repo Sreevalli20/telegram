@@ -99,6 +99,8 @@ async def lifespan(app: FastAPI):
         else:
             logger.warning("Failed to setup webhook, falling back to polling")
             try:
+                # Ensure webhook is deleted before starting polling
+                await delete_webhook(bot)
                 await bot.initialize()
                 await bot.start()
                 await bot.updater.start_polling()
@@ -109,6 +111,8 @@ async def lifespan(app: FastAPI):
         # Use polling for development
         logger.info("Polling mode enabled")
         try:
+            # Ensure webhook is deleted before starting polling to prevent conflicts
+            await delete_webhook(bot)
             await bot.initialize()
             await bot.start()
             await bot.updater.start_polling()
