@@ -6,8 +6,8 @@ class DeterministicAnalysis:
     """Provides deterministic financial analysis based on data only, no AI required."""
     
     @staticmethod
-    def analyze_stock_data(stock_data: Dict[str, Any]) -> str:
-        """Generate analysis from stock data using deterministic rules."""
+    def analyze_stock_data(stock_data: Dict[str, Any], company_data: Optional[Dict[str, Any]] = None, financial_metrics: Optional[Dict[str, Any]] = None) -> str:
+        """Generate comprehensive analysis from stock data using deterministic rules."""
         if not stock_data.get("available", True):
             return "Unable to fetch stock data. Please check the symbol and try again."
         
@@ -19,12 +19,19 @@ class DeterministicAnalysis:
         volume = stock_data.get("volume")
         market_cap = stock_data.get("market_cap")
         
-        lines = [f"📊 {symbol.upper()} Stock Analysis"]
+        lines = [f"� {symbol.upper()}"]
         lines.append("")
+        
+        # Company name if available
+        if company_data and company_data.get("company_name"):
+            lines.append(f"Company: {company_data['company_name']}")
+            if company_data.get("industry"):
+                lines.append(f"Industry: {company_data['industry']}")
+            lines.append("")
         
         # Price information
         if current_price:
-            lines.append(f"Current Price: ${current_price:.2f}")
+            lines.append(f"💰 Price: ${current_price:.2f}")
             if previous_close:
                 lines.append(f"Previous Close: ${previous_close:.2f}")
         
@@ -32,9 +39,9 @@ class DeterministicAnalysis:
         if change is not None and change_percent is not None:
             lines.append("")
             if change >= 0:
-                lines.append(f"Daily Change: +${change:.2f} (+{change_percent:.2f}%) 📈")
+                lines.append(f"Day Change: +${change:.2f} (+{change_percent:.2f}%) 📈")
             else:
-                lines.append(f"Daily Change: ${change:.2f} ({change_percent:.2f}%) 📉")
+                lines.append(f"Day Change: ${change:.2f} ({change_percent:.2f}%) 📉")
         
         # Volume analysis
         if volume:
@@ -53,20 +60,77 @@ class DeterministicAnalysis:
                 mc_str = f"${market_cap:,.0f}"
             lines.append(f"Market Cap: {mc_str}")
         
-        # Simple trend indicator
+        # Financial metrics if available
+        if financial_metrics and financial_metrics.get("available"):
+            lines.append("")
+            lines.append("📊 Key Metrics:")
+            
+            pe_ratio = financial_metrics.get("trailing_pe")
+            if pe_ratio:
+                lines.append(f"P/E Ratio: {pe_ratio:.2f}")
+            
+            dividend_yield = financial_metrics.get("dividend_yield")
+            if dividend_yield:
+                lines.append(f"Dividend Yield: {dividend_yield*100:.2f}%")
+            
+            profit_margin = financial_metrics.get("profit_margin")
+            if profit_margin:
+                lines.append(f"Profit Margin: {profit_margin*100:.2f}%")
+            
+            roe = financial_metrics.get("return_on_equity")
+            if roe:
+                lines.append(f"ROE: {roe*100:.2f}%")
+        
+        # Trend analysis
         lines.append("")
+        lines.append("📊 Trend Analysis:")
         if change_percent is not None:
-            if change_percent > 2:
-                lines.append("Trend: Strong positive movement today")
+            if change_percent > 5:
+                lines.append("• Strong positive momentum today")
+            elif change_percent > 2:
+                lines.append("• Moderate positive movement today")
             elif change_percent > 0:
-                lines.append("Trend: Slight positive movement today")
+                lines.append("• Slight positive movement today")
             elif change_percent > -2:
-                lines.append("Trend: Slight negative movement today")
+                lines.append("• Slight negative movement today")
+            elif change_percent > -5:
+                lines.append("• Moderate negative movement today")
             else:
-                lines.append("Trend: Strong negative movement today")
+                lines.append("• Strong negative pressure today")
+        
+        # Valuation insight
+        if financial_metrics and financial_metrics.get("trailing_pe"):
+            pe = financial_metrics["trailing_pe"]
+            lines.append("")
+            lines.append("💰 Valuation:")
+            if pe < 15:
+                lines.append(f"• P/E of {pe:.1f} suggests potential value or low growth expectations")
+            elif pe < 25:
+                lines.append(f"• P/E of {pe:.1f} indicates moderate valuation")
+            elif pe < 40:
+                lines.append(f"• P/E of {pe:.1f} suggests growth expectations")
+            else:
+                lines.append(f"• P/E of {pe:.1f} indicates high growth expectations or potential overvaluation")
+        
+        # Key observations
+        lines.append("")
+        lines.append("📌 Key Observations:")
+        if change_percent is not None:
+            if abs(change_percent) > 3:
+                lines.append("• Significant price movement today - check recent news")
+            else:
+                lines.append("• Normal trading activity")
+        
+        if volume and market_cap:
+            # Rough volume/market cap ratio
+            volume_ratio = volume / market_cap if market_cap > 0 else 0
+            if volume_ratio > 0.01:  # More than 1% of market cap traded
+                lines.append("• High trading volume relative to market cap")
+            else:
+                lines.append("• Normal trading volume")
         
         lines.append("")
-        lines.append("Note: This is basic data analysis. For advanced AI-powered insights, configure GOOGLE_API_KEY.")
+        lines.append("⚠️ Note: This is data-based analysis, not personalized investment advice.")
         
         return "\n".join(lines)
     
@@ -149,33 +213,38 @@ I can help you with:
 • "hello" or "hi" - Greet me
 • "help" - Show this help message
 
-Note: Advanced AI features require GOOGLE_API_KEY. Basic stock data and explanations work without it."""
+📋 Watchlist:
+• "my watchlist" - View your watchlist
+• "add AAPL to watchlist" - Add a stock
+
+All core features work without any AI API required!"""
     
     @staticmethod
     def get_greeting() -> str:
         """Return a friendly greeting."""
         return """👋 Hello! I'm Atlas, your financial assistant.
 
-I can help you with stock information, market data, and financial education.
+I can help you with stock information, market data, and financial concepts - all without requiring AI!
 
 Try commands like:
 • "AAPL" or "Apple" - Get stock price
 • "analyze Apple stock" - Detailed analysis
 • "What is P/E ratio?" - Learn financial concepts
+• "market overview" - Market data
 • "help" - See all available commands
 
-Type "help" anytime to see what I can do!"""
+What would you like to know?"""
     
     @staticmethod
     def get_unknown_response() -> str:
         """Return response for unknown queries without AI."""
-        return """🤔 I'm not sure how to help with that right now.
+        return """🤔 I'm not sure how to help with that specific request.
 
-Without AI configured, I can assist with:
-• Stock prices and basic data (e.g., "AAPL", "Apple")
-• Financial concepts (e.g., "What is P/E ratio?")
-• Market overview
+Try asking about:
+• Stock prices: "AAPL" or "Apple stock"
+• Market data: "market overview"
+• Financial concepts: "What is P/E ratio?"
+• Stock analysis: "analyze Apple stock"
+• Comparisons: "compare Apple and Microsoft"
 
-For advanced conversational AI, configure GOOGLE_API_KEY.
-
-Type "help" to see available commands."""
+Type "help" to see all available commands."""

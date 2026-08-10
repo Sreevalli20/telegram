@@ -22,8 +22,28 @@ class IntentDetector:
     def _load_patterns(self) -> Dict[str, List[Dict[str, Any]]]:
         """Load intent patterns."""
         return {
+            "greeting": [
+                {"patterns": [r"^hello$", r"^hi$", r"^hey$", r"^good morning$", r"^good afternoon$", r"^good evening$", r"^thanks$", r"^thank you$"], "extract": False}
+            ],
+            "help": [
+                {"patterns": [r"^help$", r"^what can you do$", r"^commands$", r"^features$"], "extract": False}
+            ],
+            "market_analysis": [
+                # Check market analysis first to avoid conflicts
+                {"patterns": [r"^market update$", r"^market overview$", r"^how's the market$", r"^market today$"], "extract": False},
+                {"patterns": [r"why did the market", r"market movement", r"market trend"], "extract": False},
+                {"patterns": [r"nifty", r"sensex", r"sp 500", r"dow", r"nasdaq"], "extract": False},
+                {"patterns": [r"what is the market today", r"stock market today", r"how are markets doing"], "extract": False}
+            ],
+            "stock_analysis": [
+                # These patterns have NO company/ticker - extract must be False
+                {"patterns": [r"analyze\s+a\s+stock$", r"analyze\s+stock$", r"analyze\s+a\s+company$", r"stock\s+analysis$"], "extract": False},
+                # These patterns MIGHT have company/ticker - extract is True
+                {"patterns": [r"analyze\s+(.+)\s+stock$", r"analyze\s+(.+)$"], "extract": True},
+                {"patterns": [r"(.+)\s+stock\s+analysis$", r"(.+)\s+analysis$"], "extract": True}
+            ],
             "company_research": [
-                {"patterns": [r"tell me about\s+(.+)", r"what is\s+(.+)", r"analyze\s+(.+)", r"research\s+(.+)"], "extract": True},
+                {"patterns": [r"tell me about\s+(?!market)(.+)", r"research\s+(?!market)(.+)", r"company\s+research", r"research\s+a\s+company"], "extract": True},
                 {"patterns": [r"(.+)\s+company", r"(.+)\s+overview", r"(.+)\s+business"], "extract": True},
                 {"patterns": [r"who is\s+(.+)", r"what does\s+(.+)\s+do"], "extract": True}
             ],
@@ -31,13 +51,8 @@ class IntentDetector:
                 {"patterns": [r"stock price of\s+(.+)", r"price of\s+(.+)", r"current price\s+(.+)"], "extract": True},
                 {"patterns": [r"how is\s+(.+)\s+doing", r"what's\s+(.+)\s+trading at"], "extract": True},
                 {"patterns": [r"quote\s+(.+)", r"ticker\s+(.+)"], "extract": True},
-                {"patterns": [r"analyze\s+(.+)\s+stock", r"(.+)\s+stock"], "extract": True},
-                {"patterns": [r"(.+)\s+stock price", r"(.+)\s+quote"], "extract": True}
-            ],
-            "market_analysis": [
-                {"patterns": [r"market update", r"market overview", r"how's the market", r"market today"], "extract": False},
-                {"patterns": [r"why did the market", r"market movement", r"market trend"], "extract": False},
-                {"patterns": [r"nifty", r"sensex", r"sp 500", r"dow", r"nasdaq"], "extract": False}
+                {"patterns": [r"(.+)\s+stock price", r"(.+)\s+quote", r"(.+)\s+stock"], "extract": True},
+                {"patterns": [r"^[A-Z]{1,5}$"], "extract": True}  # Pure ticker symbols
             ],
             "comparison": [
                 {"patterns": [r"compare\s+(.+)\s+and\s+(.+)", r"(.+)\s+vs\s+(.+)"], "extract": True},
@@ -86,12 +101,6 @@ class IntentDetector:
                 {"patterns": [r"how does\s+(.+)work", r"why is\s+(.+)important"], "extract": True},
                 {"patterns": [r"(.+)\s+ratio", r"(.+)\s+mean"], "extract": True}
             ],
-            "greeting": [
-                {"patterns": [r"hello", r"hi", r"hey", r"good morning", r"good afternoon", r"good evening", r"thanks", r"thank you"], "extract": False}
-            ],
-            "help": [
-                {"patterns": [r"help", r"what can you do", r"commands", r"features"], "extract": False}
-            ],
             "follow_up": [
                 {"patterns": [r"what about", r"tell me more", r"elaborate", r"explain further"], "extract": False},
                 {"patterns": [r"and\s+(.+)", r"also\s+(.+)"], "extract": True}
@@ -113,9 +122,13 @@ class IntentDetector:
                             # Extract entities from the match
                             if match.groups():
                                 entities["raw_entities"] = list(match.groups())
-                                # Try to identify company symbols
-                                entities["symbols"] = self._extract_symbols(message)
-                                entities["companies"] = self._extract_company_names(message)
+                            # Always try to identify company symbols and names
+                            entities["symbols"] = self._extract_symbols(message)
+                            entities["companies"] = self._extract_company_names(message)
+                        else:
+                            # Even if extract=False, try to get companies for routing
+                            entities["companies"] = self._extract_company_names(message)
+                            entities["symbols"] = []
                         
                         return IntentResult(
                             intent=intent,
@@ -125,20 +138,57 @@ class IntentDetector:
                         )
         
         # Default to general conversation if no pattern matches
+        # IMPORTANT: Do NOT extract symbols in default case to avoid "I" bug
         return IntentResult(
             intent="general",
             confidence=0.5,
-            entities={"symbols": self._extract_symbols(message)},
+            entities={"symbols": [], "companies": []},  # Empty entities by default
             context="general_conversation"
         )
     
     def _extract_symbols(self, message: str) -> List[str]:
-        """Extract stock symbols from message."""
+        """Extract stock symbols from message with robust validation."""
         # Look for uppercase ticker patterns (1-5 letters)
         symbols = re.findall(r'\b[A-Z]{1,5}\b', message)
+        
+        # Filter out common English words and pronouns - expanded list
+        common_words = {
+            "I", "A", "AN", "THE", "AND", "FOR", "ARE", "BUT", "NOT", "YOU", "ALL", 
+            "CAN", "HAD", "HER", "WAS", "ONE", "OUR", "OUT", "HAS", "HIS", "HOW",
+            "IS", "IT", "ME", "MY", "WE", "WHAT", "DO", "SO", "GO", "NO", "UP", "ON",
+            "IN", "AT", "TO", "BY", "OF", "OR", "IF", "AS", "BE", "HE", "WE", "OR",
+            "THIS", "THAT", "THESE", "THOSE", "AM", "BEEN", "BEING", "HAVE", "HAS",
+            "HAD", "DO", "DOES", "DID", "WILL", "WOULD", "SHOULD", "COULD", "MAY",
+            "MIGHT", "MUST", "SHALL", "STOCK", "COMPANY", "PRICE", "MARKET", "SHARE"
+        }
+        
         # Filter out common words
-        common_words = {"THE", "AND", "FOR", "ARE", "BUT", "NOT", "YOU", "ALL", "CAN", "HAD", "HER", "WAS", "ONE", "OUR", "OUT", "HAS", "HIS", "HOW"}
         symbols = [s for s in symbols if s not in common_words]
+        
+        # CRITICAL: Reject ALL single-character symbols
+        # Single letters are almost never valid stock symbols in this context
+        symbols = [s for s in symbols if len(s) > 1]
+        
+        # Additional validation: check if message is purely a ticker (no spaces)
+        # If the entire message is just the ticker, accept it
+        message_stripped = message.strip()
+        if len(symbols) == 1 and len(message_stripped) == len(symbols[0]) and message_stripped.isupper():
+            return symbols
+        
+        # Otherwise, require stock context
+        if symbols:
+            stock_contexts = ["ticker", "symbol", "quote", "shares", "trading", "nasdaq", "nyse", "stock", "price"]
+            message_lower = message.lower()
+            has_stock_context = any(ctx in message_lower for ctx in stock_contexts)
+            # Also check if the message contains common company names
+            company_names = ["apple", "microsoft", "google", "amazon", "tesla", "meta", "nvidia", "facebook"]
+            has_company_name = any(name in message_lower for name in company_names)
+            
+            if not (has_stock_context or has_company_name):
+                # If no clear stock context, reject symbol extraction entirely
+                # This prevents "I" from being extracted from "analyze a stock"
+                return []
+        
         return symbols
     
     def _extract_company_names(self, message: str) -> List[str]:

@@ -30,6 +30,8 @@ from app.services.explanation_service import ExplanationService
 from app.services.response_formatter import ResponseFormatter
 from app.workers.background_worker import BackgroundWorker
 from app.finance.deterministic_analysis import DeterministicAnalysis
+from app.finance.ticker_resolver import TickerResolver
+from app.finance.deterministic_knowledge import DeterministicKnowledge
 
 
 class BotService:
@@ -46,6 +48,8 @@ class BotService:
         self.response_formatter = ResponseFormatter()
         self.background_worker = BackgroundWorker()
         self.deterministic = DeterministicAnalysis()
+        self.ticker_resolver = TickerResolver()
+        self.deterministic_knowledge = DeterministicKnowledge()
         
         # Initialize services (will be created with DB session when needed)
         self.watchlist_service = None
@@ -59,7 +63,7 @@ class BotService:
         if self.ai_provider is None:
             from app.utils.logger import get_logger
             logger = get_logger(__name__)
-            logger.warning("AI provider not configured. Using deterministic fallback mode. Set GOOGLE_API_KEY for AI enhancements.")
+            logger.info("AI provider not configured. Using deterministic mode for core functionality.")
     
     def _get_ai_provider(self):
         """Get the configured AI provider. Returns None if no API key is available."""
@@ -243,55 +247,154 @@ class BotService:
         history: list,
         user_context: Dict[str, Any]
     ) -> str:
-        """Route intent to appropriate handler."""
+        """Route intent to appropriate handler with deterministic-first approach."""
+        from app.utils.logger import get_logger
+        logger = get_logger(__name__)
+        
         symbols = entities.get("symbols", [])
+        companies = entities.get("companies", [])
+        
+        # Log intent routing
+        logger.info(f"Routing intent={intent}, symbols={symbols}, companies={companies}")
         
         # Handle deterministic intents (no AI required)
         if intent == "greeting":
             return self.deterministic.get_greeting()
         elif intent == "help":
             return self.deterministic.get_help_text()
-        elif intent == "explanation":
-            concept = entities.get("concept")
+        
+        # Handle explanation intents using deterministic knowledge base
+        if intent == "explanation":
+            concept = self.deterministic_knowledge.extract_concept(message_text)
             if concept:
-                return await self._handle_explanation(concept)
+                explanation = self.deterministic_knowledge.get_concept_explanation(concept)
+                if explanation:
+                    return explanation
+            # Fallback to AI if available
+            if self.ai_provider:
+                return await self._handle_explanation(message_text)
+            else:
+                return self.deterministic.get_help_text()
+        
+        # Check if intent requires a symbol but none was provided
+        if self.ticker_resolver.requires_symbol(intent, entities):
+            logger.info(f"Intent {intent} requires symbol but none provided")
+            return "📈 Which stock would you like me to analyze? Send a company name or ticker, for example Apple or AAPL."
+        
+        # Handle stock analysis with deterministic fallback
+        if intent == "stock_analysis":
+            if symbols:
+                return await self._handle_stock_lookup(symbols[0])
+            elif companies:
+                # Try to resolve company name to ticker
+                for company in companies:
+                    ticker = self.ticker_resolver.resolve(company)
+                    if ticker:
+                        return await self._handle_stock_lookup(ticker)
+            return "📈 Which stock would you like me to analyze? Send a company name or ticker, for example Apple or AAPL."
         
         # Handle stock lookup (works with or without AI)
         if intent == "stock_lookup" and symbols:
             return await self._handle_stock_lookup(symbols[0])
         
-        # Check if AI provider is available for AI-dependent intents
-        if self.ai_provider is None and intent in ["company_research", "market_analysis", "comparison", "news_request", "document_chat", "daily_briefing"]:
-            return "🤖 This feature requires AI. Please configure GOOGLE_API_KEY for advanced features. Try 'help' to see what works without AI."
+        # Handle market analysis with deterministic fallback
+        if intent == "market_analysis":
+            return await self._handle_market_analysis_deterministic()
         
-        if intent == "company_research" and symbols:
-            return await self._handle_company_research(symbols[0])
-        elif intent == "market_analysis":
-            return await self._handle_market_analysis()
-        elif intent == "comparison" and len(symbols) >= 2:
-            return await self._handle_comparison(symbols[:2])
-        elif intent == "news_request":
-            return await self._handle_news_request(symbols[0] if symbols else None)
-        elif intent == "watchlist":
+        # Handle comparison with deterministic fallback
+        if intent == "comparison":
+            if len(symbols) >= 2:
+                return await self._handle_comparison_deterministic(symbols[:2])
+            elif len(companies) >= 2:
+                # Resolve companies to tickers
+                tickers = []
+                for company in companies[:2]:
+                    ticker = self.ticker_resolver.resolve(company)
+                    if ticker:
+                        tickers.append(ticker)
+                if len(tickers) >= 2:
+                    return await self._handle_comparison_deterministic(tickers)
+            return "📊 Which companies would you like me to compare? Send two company names or tickers, for example Apple and Microsoft."
+        
+        # Handle company research with deterministic fallback
+        if intent == "company_research":
+            if symbols:
+                return await self._handle_company_research_deterministic(symbols[0])
+            elif companies:
+                for company in companies:
+                    ticker = self.ticker_resolver.resolve(company)
+                    if ticker:
+                        return await self._handle_company_research_deterministic(ticker)
+            return "📈 Which company would you like me to research? Send a company name or ticker, for example Apple or AAPL."
+        
+        # Handle news request (requires AI or fallback)
+        if intent == "news_request":
+            if self.ai_provider:
+                return await self._handle_news_request(symbols[0] if symbols else None)
+            else:
+                return "📰 News features require AI. Configure GOOGLE_API_KEY for news updates, or try 'market overview' for available market data."
+        
+        # Handle watchlist (database only, no AI needed)
+        if intent == "watchlist":
             return await self._handle_watchlist(entities, user_id)
-        elif intent == "alert":
-            return await self._handle_alert(entities, user_id)
-        elif intent == "document_chat":
-            return await self._handle_document_chat(message_text, user_id)
-        elif intent == "daily_briefing":
-            return await self._handle_daily_briefing(user_id)
         
-        # Default to conversation agent
-        if self.ai_provider is None:
-            return self.deterministic.get_unknown_response()
-        try:
-            return await self.conversation_agent.process_message(
-                message_text, history, user_context
-            )
-        except RuntimeError as e:
-            from app.utils.logger import get_logger
-            logger = get_logger(__name__)
-            logger.error(f"AI provider error during conversation: {str(e)}")
+        # Handle alert (database only, no AI needed)
+        if intent == "alert":
+            return await self._handle_alert(entities, user_id)
+        
+        # Handle document chat (requires AI)
+        if intent == "document_analysis":
+            if self.ai_provider:
+                return await self._handle_document_chat(message_text, user_id)
+            else:
+                return "📄 Document analysis requires AI. Configure GOOGLE_API_KEY for document features."
+        
+        # Handle daily briefing (requires AI or fallback)
+        if intent == "briefing":
+            if self.ai_provider:
+                return await self._handle_daily_briefing(user_id)
+            else:
+                return "📊 Briefing requires AI. Configure GOOGLE_API_KEY for personalized briefings, or try 'market overview'."
+        
+        # Handle valuation with deterministic fallback
+        if intent == "valuation":
+            if symbols:
+                return await self._handle_stock_lookup(symbols[0])  # Stock lookup includes valuation
+            elif companies:
+                for company in companies:
+                    ticker = self.ticker_resolver.resolve(company)
+                    if ticker:
+                        return await self._handle_stock_lookup(ticker)
+            return "📈 Which stock would you like me to analyze? Send a company name or ticker."
+        
+        # Handle financial health with deterministic fallback
+        if intent == "financial_health":
+            if symbols:
+                return await self._handle_stock_lookup(symbols[0])  # Stock lookup includes financial metrics
+            elif companies:
+                for company in companies:
+                    ticker = self.ticker_resolver.resolve(company)
+                    if ticker:
+                        return await self._handle_stock_lookup(ticker)
+            return "📈 Which stock would you like me to analyze? Send a company name or ticker."
+        
+        # Default to conversation agent if AI available, otherwise use deterministic fallback
+        if self.ai_provider:
+            try:
+                return await self.conversation_agent.process_message(
+                    message_text, history, user_context
+                )
+            except RuntimeError as e:
+                logger.error(f"AI provider error during conversation: {str(e)}")
+                return self.deterministic.get_unknown_response()
+        else:
+            # Try to extract and handle finance concepts
+            if self.deterministic_knowledge.has_concept(message_text):
+                concept = self.deterministic_knowledge.extract_concept(message_text)
+                explanation = self.deterministic_knowledge.get_concept_explanation(concept)
+                if explanation:
+                    return explanation
+            
             return self.deterministic.get_unknown_response()
     
     async def _handle_stock_lookup(self, symbol: str) -> str:
@@ -313,9 +416,9 @@ class BotService:
             return f"Error fetching stock data for {symbol}. Please try again later."
     
     async def _handle_company_research(self, symbol: str) -> str:
-        """Handle company research intent."""
+        """Handle company research intent with AI."""
         if self.ai_provider is None:
-            return "🤖 AI features are not currently configured. Please configure a Google API key (GOOGLE_API_KEY) for free tier access to use this feature."
+            return await self._handle_company_research_deterministic(symbol)
         try:
             result = await self.finance_agent.get_company_research(symbol)
             return result.get("analysis", "Research unavailable")
@@ -323,12 +426,85 @@ class BotService:
             from app.utils.logger import get_logger
             logger = get_logger(__name__)
             logger.error(f"AI provider error during company research: {str(e)}")
-            return f"📈 Company research for {symbol.upper()} is temporarily unavailable. Please try again later."
+            return await self._handle_company_research_deterministic(symbol)
+    
+    async def _handle_company_research_deterministic(self, symbol: str) -> str:
+        """Handle company research using deterministic data only."""
+        from app.utils.logger import get_logger
+        logger = get_logger(__name__)
+        
+        try:
+            # Use the same stock lookup but with more context
+            result = await self.finance_agent.analyze_stock(symbol)
+            stock_price = result.get("data", {}).get("stock_price", {})
+            company_overview = result.get("data", {}).get("company_overview", {})
+            financial_metrics = result.get("data", {}).get("financial_metrics", {})
+            
+            if not stock_price.get("available", False):
+                return f"Unable to fetch data for {symbol.upper()}. Please check the symbol and try again."
+            
+            lines = [f"📊 {symbol.upper()} Company Research"]
+            lines.append("")
+            
+            # Company info
+            if company_overview.get("company_name"):
+                lines.append(f"Company: {company_overview['company_name']}")
+            if company_overview.get("industry"):
+                lines.append(f"Industry: {company_overview['industry']}")
+            if company_overview.get("sector"):
+                lines.append(f"Sector: {company_overview['sector']}")
+            lines.append("")
+            
+            # Current price info
+            if stock_price.get("current_price"):
+                lines.append(f"💰 Current Price: ${stock_price['current_price']:.2f}")
+            if stock_price.get("change") is not None:
+                change = stock_price['change']
+                change_percent = stock_price.get('change_percent', 0)
+                if change >= 0:
+                    lines.append(f"Change: +${change:.2f} (+{change_percent:.2f}%) 📈")
+                else:
+                    lines.append(f"Change: ${change:.2f} ({change_percent:.2f}%) 📉")
+            lines.append("")
+            
+            # Market cap
+            if stock_price.get("market_cap"):
+                market_cap = stock_price['market_cap']
+                if market_cap >= 1e12:
+                    mc_str = f"${market_cap/1e12:.2f}T"
+                elif market_cap >= 1e9:
+                    mc_str = f"${market_cap/1e9:.2f}B"
+                elif market_cap >= 1e6:
+                    mc_str = f"${market_cap/1e6:.2f}M"
+                else:
+                    mc_str = f"${market_cap:,.0f}"
+                lines.append(f"Market Cap: {mc_str}")
+            lines.append("")
+            
+            # Key metrics
+            if financial_metrics.get("available"):
+                lines.append("📈 Key Metrics:")
+                if financial_metrics.get("trailing_pe"):
+                    lines.append(f"• P/E Ratio: {financial_metrics['trailing_pe']:.2f}")
+                if financial_metrics.get("profit_margin"):
+                    lines.append(f"• Profit Margin: {financial_metrics['profit_margin']*100:.2f}%")
+                if financial_metrics.get("return_on_equity"):
+                    lines.append(f"• ROE: {financial_metrics['return_on_equity']*100:.2f}%")
+                if financial_metrics.get("debt_to_equity"):
+                    lines.append(f"• Debt-to-Equity: {financial_metrics['debt_to_equity']:.2f}")
+                lines.append("")
+            
+            lines.append("📌 This is data-based company information. For AI-powered research insights, configure GOOGLE_API_KEY.")
+            
+            return "\n".join(lines)
+        except Exception as e:
+            logger.error(f"Deterministic company research error: {str(e)}")
+            return f"Unable to fetch company data for {symbol.upper()}. Please try again later."
     
     async def _handle_market_analysis(self) -> str:
-        """Handle market analysis intent."""
+        """Handle market analysis intent with AI."""
         if self.ai_provider is None:
-            return "🤖 AI features are not currently configured. Please configure a Google API key (GOOGLE_API_KEY) for free tier access to use this feature."
+            return await self._handle_market_analysis_deterministic()
         try:
             result = await self.finance_agent.get_market_overview()
             return result.get("analysis", "Market overview unavailable")
@@ -336,12 +512,81 @@ class BotService:
             from app.utils.logger import get_logger
             logger = get_logger(__name__)
             logger.error(f"AI provider error during market analysis: {str(e)}")
-            return "📊 Market analysis is temporarily unavailable. Please try again later."
+            return await self._handle_market_analysis_deterministic()
+    
+    async def _handle_market_analysis_deterministic(self) -> str:
+        """Handle market analysis using deterministic data only."""
+        from app.utils.logger import get_logger
+        logger = get_logger(__name__)
+        
+        try:
+            from app.finance import MarketDataService
+            market_service = MarketDataService()
+            
+            lines = ["📊 Market Overview"]
+            lines.append("")
+            
+            # Try to get major indices
+            indices = ["^GSPC", "^DJI", "^IXIC"]  # S&P 500, Dow, Nasdaq
+            index_data = []
+            
+            for index in indices:
+                try:
+                    data = await market_service.get_stock_price(index)
+                    if data.get("available"):
+                        index_data.append(data)
+                except Exception as e:
+                    logger.warning(f"Failed to fetch {index}: {str(e)}")
+            
+            if index_data:
+                lines.append("📈 Major Indices:")
+                for data in index_data:
+                    symbol = data.get("symbol", "").replace("^", "")
+                    price = data.get("current_price")
+                    change = data.get("change")
+                    change_percent = data.get("change_percent")
+                    
+                    if price:
+                        lines.append(f"{symbol}: ${price:.2f}")
+                        if change is not None:
+                            if change >= 0:
+                                lines.append(f"  Change: +${change:.2f} (+{change_percent:.2f}%)")
+                            else:
+                                lines.append(f"  Change: ${change:.2f} ({change_percent:.2f}%)")
+                lines.append("")
+            
+            # Try to get market movers
+            try:
+                movers = await market_service.get_market_movers("US", limit=3)
+                if movers.get("gainers"):
+                    lines.append("🔼 Top Gainers:")
+                    for gainer in movers["gainers"][:3]:
+                        symbol = gainer.get("symbol", "")
+                        change = gainer.get("change_percent", 0)
+                        lines.append(f"• {symbol}: +{change:.2f}%")
+                
+                if movers.get("losers"):
+                    lines.append("")
+                    lines.append("🔽 Top Losers:")
+                    for loser in movers["losers"][:3]:
+                        symbol = loser.get("symbol", "")
+                        change = loser.get("change_percent", 0)
+                        lines.append(f"• {symbol}: {change:.2f}%")
+            except Exception as e:
+                logger.warning(f"Failed to fetch market movers: {str(e)}")
+            
+            lines.append("")
+            lines.append("📌 This is live market data. For AI-powered market analysis, configure GOOGLE_API_KEY.")
+            
+            return "\n".join(lines)
+        except Exception as e:
+            logger.error(f"Deterministic market analysis error: {str(e)}")
+            return "📊 Live market data is temporarily unavailable. Try individual stock lookups like 'AAPL' or 'Apple'."
     
     async def _handle_comparison(self, symbols: list) -> str:
-        """Handle comparison intent."""
+        """Handle comparison intent with AI."""
         if self.ai_provider is None:
-            return "🤖 AI features are not currently configured. Please configure a Google API key (GOOGLE_API_KEY) for free tier access to use this feature."
+            return await self._handle_comparison_deterministic(symbols)
         try:
             result = await self.finance_agent.compare_companies(symbols[0], symbols[1])
             return result.get("comparison_analysis", "Comparison unavailable")
@@ -349,7 +594,94 @@ class BotService:
             from app.utils.logger import get_logger
             logger = get_logger(__name__)
             logger.error(f"AI provider error during comparison: {str(e)}")
-            return "⚖️ Stock comparison is temporarily unavailable. Please try again later."
+            return await self._handle_comparison_deterministic(symbols)
+    
+    async def _handle_comparison_deterministic(self, symbols: list) -> str:
+        """Handle comparison using deterministic data only."""
+        from app.utils.logger import get_logger
+        logger = get_logger(__name__)
+        
+        try:
+            from app.finance import MarketDataService
+            market_service = MarketDataService()
+            
+            if len(symbols) < 2:
+                return "📊 Please provide at least two symbols to compare."
+            
+            symbol1, symbol2 = symbols[0], symbols[1]
+            
+            # Fetch data for both symbols
+            data1 = await market_service.get_stock_price(symbol1)
+            data2 = await market_service.get_stock_price(symbol2)
+            
+            if not data1.get("available") or not data2.get("available"):
+                return f"Unable to fetch data for comparison. Please check the symbols: {symbol1}, {symbol2}"
+            
+            lines = [f"⚖️ Comparison: {symbol1.upper()} vs {symbol2.upper()}"]
+            lines.append("")
+            
+            # Create comparison table
+            lines.append("| Metric       | {} | {} |".format(symbol1.upper(), symbol2.upper()))
+            lines.append("|--------------|-----|-----|")
+            
+            # Price
+            price1 = data1.get("current_price")
+            price2 = data2.get("current_price")
+            if price1 and price2:
+                lines.append(f"| Price        | ${price1:.2f} | ${price2:.2f} |")
+            
+            # Change
+            change1 = data1.get("change_percent")
+            change2 = data2.get("change_percent")
+            if change1 is not None and change2 is not None:
+                lines.append(f"| Day Change   | {change1:+.2f}% | {change2:+.2f}% |")
+            
+            # Market Cap
+            mc1 = data1.get("market_cap")
+            mc2 = data2.get("market_cap")
+            if mc1 and mc2:
+                mc1_str = f"${mc1/1e9:.1f}B" if mc1 >= 1e9 else f"${mc1/1e6:.1f}M"
+                mc2_str = f"${mc2/1e9:.1f}B" if mc2 >= 1e9 else f"${mc2/1e6:.1f}M"
+                lines.append(f"| Market Cap   | {mc1_str} | {mc2_str} |")
+            
+            # Volume
+            vol1 = data1.get("volume")
+            vol2 = data2.get("volume")
+            if vol1 and vol2:
+                vol1_str = f"{vol1/1e6:.1f}M" if vol1 >= 1e6 else f"{vol1:,.0f}"
+                vol2_str = f"{vol2/1e6:.1f}M" if vol2 >= 1e6 else f"{vol2:,.0f}"
+                lines.append(f"| Volume       | {vol1_str} | {vol2_str} |")
+            
+            lines.append("")
+            
+            # Simple comparison notes
+            lines.append("📊 Key Observations:")
+            
+            if price1 and price2:
+                if price1 > price2:
+                    lines.append(f"• {symbol1.upper()} trades at ${(price1/price2 - 1)*100:.1f}% higher than {symbol2.upper()}")
+                else:
+                    lines.append(f"• {symbol2.upper()} trades at ${(price2/price1 - 1)*100:.1f}% higher than {symbol1.upper()}")
+            
+            if change1 is not None and change2 is not None:
+                if change1 > change2:
+                    lines.append(f"• {symbol1.upper()} performing better today ({change1:+.2f}% vs {change2:+.2f}%)")
+                else:
+                    lines.append(f"• {symbol2.upper()} performing better today ({change2:+.2f}% vs {change1:+.2f}%)")
+            
+            if mc1 and mc2:
+                if mc1 > mc2:
+                    lines.append(f"• {symbol1.upper()} has larger market cap")
+                else:
+                    lines.append(f"• {symbol2.upper()} has larger market cap")
+            
+            lines.append("")
+            lines.append("📌 This is data-based comparison. For AI-powered comparative analysis, configure GOOGLE_API_KEY.")
+            
+            return "\n".join(lines)
+        except Exception as e:
+            logger.error(f"Deterministic comparison error: {str(e)}")
+            return f"Error comparing {symbols[0]} and {symbols[1]}. Please try again later."
     
     async def _handle_news_request(self, symbol: Optional[str]) -> str:
         """Handle news request intent."""

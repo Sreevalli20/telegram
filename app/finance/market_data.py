@@ -1,20 +1,87 @@
-"""Market data service for fetching real-time financial market information."""
+"""Market data service for fetching real-time financial market information with caching and error handling."""
 import yfinance as yf
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta
 import asyncio
+import time
+from app.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class MarketDataService:
-    """Service for fetching market data from financial APIs."""
+    """Service for fetching market data from financial APIs with caching and retry logic."""
     
     def __init__(self):
         self.cache = {}
         self.cache_expiry = {}
+        self.cache_duration = 300  # 5 minutes cache
+        self.max_retries = 3
+        self.base_retry_delay = 2  # seconds
+    
+    def _is_cache_valid(self, key: str) -> bool:
+        """Check if cached data is still valid."""
+        if key not in self.cache:
+            return False
+        if key not in self.cache_expiry:
+            return False
+        return datetime.now() < self.cache_expiry[key]
+    
+    def _get_from_cache(self, key: str) -> Optional[Dict[str, Any]]:
+        """Get data from cache if valid."""
+        if self._is_cache_valid(key):
+            logger.debug(f"Cache hit for key: {key}")
+            return self.cache[key]
+        return None
+    
+    def _set_cache(self, key: str, data: Dict[str, Any]) -> None:
+        """Set data in cache with expiry."""
+        self.cache[key] = data
+        self.cache_expiry[key] = datetime.now() + timedelta(seconds=self.cache_duration)
+        logger.debug(f"Cached data for key: {key}")
+    
+    async def _retry_with_backoff(self, func, *args, **kwargs) -> Any:
+        """Execute function with exponential backoff retry logic."""
+        last_error = None
+        
+        for attempt in range(self.max_retries):
+            try:
+                return await func(*args, **kwargs)
+            except Exception as e:
+                last_error = e
+                error_msg = str(e).lower()
+                
+                # Don't retry on certain errors
+                if "404" in error_msg or "not found" in error_msg:
+                    logger.error(f"Non-retryable error: {e}")
+                    raise
+                
+                # Check for rate limiting - DO NOT retry aggressively on 429
+                if "429" in error_msg or "too many requests" in error_msg:
+                    logger.warning(f"Rate limited (429) - stopping retries to avoid further blocking")
+                    # For 429, we raise immediately and let the caller handle it gracefully
+                    raise
+                else:
+                    # For other errors, shorter wait
+                    wait_time = self.base_retry_delay
+                    logger.warning(f"Error on attempt {attempt + 1}/{self.max_retries}: {e}, retrying in {wait_time}s")
+                    await asyncio.sleep(wait_time)
+        
+        # All retries exhausted
+        logger.error(f"All {self.max_retries} retry attempts failed. Last error: {last_error}")
+        raise last_error
     
     async def get_stock_price(self, symbol: str) -> Dict[str, Any]:
-        """Get current stock price and basic data."""
-        try:
+        """Get current stock price and basic data with caching and retry logic."""
+        cache_key = f"stock_price_{symbol.upper()}"
+        
+        # Try cache first
+        cached_data = self._get_from_cache(cache_key)
+        if cached_data:
+            return cached_data
+        
+        # Fetch fresh data with retry logic
+        async def fetch_stock_data():
             ticker = yf.Ticker(symbol.upper())
             info = ticker.info
             
@@ -36,9 +103,16 @@ class MarketDataService:
                 "volume": info.get('volume'),
                 "market_cap": info.get('marketCap'),
                 "currency": info.get('currency'),
-                "last_updated": datetime.now().isoformat()
+                "last_updated": datetime.now().isoformat(),
+                "available": True
             }
+        
+        try:
+            data = await self._retry_with_backoff(fetch_stock_data)
+            self._set_cache(cache_key, data)
+            return data
         except Exception as e:
+            logger.error(f"Failed to fetch stock price for {symbol}: {str(e)}")
             return {
                 "symbol": symbol.upper(),
                 "error": str(e),
