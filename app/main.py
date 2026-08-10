@@ -91,34 +91,34 @@ async def lifespan(app: FastAPI):
 
     if bot is None:
         logger.warning("Telegram bot is not configured; running without Telegram integration")
-    elif settings.webhook_mode:
-        # Setup webhook for production
-        webhook_success = await setup_webhook(bot)
-        if webhook_success:
-            logger.info("Webhook mode enabled")
-        else:
-            logger.warning("Failed to setup webhook, falling back to polling")
-            try:
-                # Ensure webhook is deleted before starting polling
-                await delete_webhook(bot)
-                await bot.initialize()
-                await bot.start()
-                await bot.updater.start_polling()
-                logger.info("Telegram polling started successfully")
-            except Exception as e:
-                logger.error(f"Failed to start Telegram polling: {e}")
     else:
-        # Use polling for development
-        logger.info("Polling mode enabled")
-        try:
-            # Ensure webhook is deleted before starting polling to prevent conflicts
-            await delete_webhook(bot)
+        # Single unified Telegram startup - eliminates duplicate polling
+        async def start_telegram_polling():
+            """Start Telegram polling - single definitive function."""
+            logger.info("Starting Telegram bot initialization...")
             await bot.initialize()
+            logger.info("Telegram bot initialized")
+            
+            logger.info("Starting Telegram bot...")
             await bot.start()
+            logger.info("Telegram bot started")
+            
+            logger.info("Starting Telegram polling...")
             await bot.updater.start_polling()
             logger.info("Telegram polling started successfully")
-        except Exception as e:
-            logger.error(f"Failed to start Telegram polling: {e}")
+        
+        if settings.webhook_mode:
+            # Setup webhook for production
+            webhook_success = await setup_webhook(bot)
+            if webhook_success:
+                logger.info("Webhook mode enabled")
+            else:
+                logger.warning("Failed to setup webhook, falling back to polling")
+                await start_telegram_polling()
+        else:
+            # Use polling for development
+            logger.info("Polling mode enabled")
+            await start_telegram_polling()
     
     logger.info("ATLAS application started successfully")
     
