@@ -26,9 +26,9 @@ services:
       - key: MAX_CONVERSATION_HISTORY
         value: "50"
       - key: WEBHOOK_MODE
-        value: "false"
+        value: "true"
       - key: WEBHOOK_URL
-        sync: false
+        value: "https://telegram-3-4w76.onrender.com"
       - key: WEBHOOK_SECRET
         sync: false
       - key: RENDER

@@ -92,32 +92,31 @@ async def lifespan(app: FastAPI):
     if bot is None:
         logger.warning("Telegram bot is not configured; running without Telegram integration")
     else:
-        # Single unified Telegram startup - eliminates duplicate polling
-        async def start_telegram_polling():
-            """Start Telegram polling - single definitive function."""
-            logger.info("Starting Telegram bot initialization...")
-            await bot.initialize()
-            logger.info("Telegram bot initialized")
-            
-            logger.info("Starting Telegram bot...")
-            await bot.start()
-            logger.info("Telegram bot started")
-            
-            logger.info("Starting Telegram polling...")
-            await bot.updater.start_polling()
-            logger.info("Telegram polling started successfully")
-        
+        # Production webhook mode - NO polling fallback
         if settings.webhook_mode:
             # Setup webhook for production
             webhook_success = await setup_webhook(bot)
             if webhook_success:
-                logger.info("Webhook mode enabled")
+                logger.info("Webhook mode enabled - Telegram will receive updates via webhook")
             else:
-                logger.warning("Failed to setup webhook, falling back to polling")
-                await start_telegram_polling()
+                logger.error("Failed to setup webhook - Telegram bot will not receive updates")
         else:
-            # Use polling for development
-            logger.info("Polling mode enabled")
+            # Development polling mode only
+            logger.info("Polling mode enabled (development only)")
+            async def start_telegram_polling():
+                """Start Telegram polling - development only."""
+                logger.info("Starting Telegram bot initialization...")
+                await bot.initialize()
+                logger.info("Telegram bot initialized")
+                
+                logger.info("Starting Telegram bot...")
+                await bot.start()
+                logger.info("Telegram bot started")
+                
+                logger.info("Starting Telegram polling...")
+                await bot.updater.start_polling()
+                logger.info("Telegram polling started successfully")
+            
             await start_telegram_polling()
     
     logger.info("ATLAS application started successfully")
@@ -129,8 +128,11 @@ async def lifespan(app: FastAPI):
     
     if bot is not None:
         if settings.webhook_mode:
+            # Delete webhook to clean up Telegram configuration
             await delete_webhook(bot)
+            logger.info("Webhook deleted during shutdown")
         else:
+            # Stop polling in development mode
             try:
                 await bot.updater.stop()
                 await bot.stop()
@@ -191,11 +193,20 @@ async def bot_status():
             "mode": "none",
             "message": "Telegram bot is not configured"
         }
-    return {
+    
+    status = {
         "status": "running" if bot.running else "stopped",
         "bot_id": bot.id,
         "mode": "webhook" if settings.webhook_mode else "polling"
     }
+    
+    # Add webhook information if in webhook mode
+    if settings.webhook_mode:
+        from app.telegram.webhook import get_webhook_info
+        webhook_info = await get_webhook_info(bot)
+        status["webhook"] = webhook_info
+    
+    return status
 
 
 @app.post("/telegram/webhook")
