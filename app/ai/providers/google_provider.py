@@ -6,7 +6,7 @@ from app.ai.providers.base_provider import BaseAIProvider
 class GoogleProvider(BaseAIProvider):
     """Google (Gemini) provider implementation."""
     
-    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-1.5-pro"):
+    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-1.5-flash"):
         super().__init__(api_key)
         self.model_name = model
         self._model = None

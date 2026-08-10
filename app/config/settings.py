@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./atlas.db"
     
     # AI Provider
-    ai_provider: str = "openai"
+    ai_provider: str = "google"  # Default to Google Gemini for free tier access
     openai_api_key: Optional[str] = None
     anthropic_api_key: Optional[str] = None
     google_api_key: Optional[str] = None

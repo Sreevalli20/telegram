@@ -12,13 +12,14 @@ services:
       - key: TELEGRAM_BOT_TOKEN
         sync: false
       - key: AI_PROVIDER
-        value: openai
+        value: google
       - key: OPENAI_API_KEY
         sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: GOOGLE_API_KEY
         sync: false
+        description: Google Gemini API key for free tier AI access
       - key: APP_ENV
         value: production
       - key: LOG_LEVEL
