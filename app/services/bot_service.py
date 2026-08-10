@@ -29,6 +29,7 @@ from app.services.image_service import ImageService
 from app.services.explanation_service import ExplanationService
 from app.services.response_formatter import ResponseFormatter
 from app.workers.background_worker import BackgroundWorker
+from app.finance.deterministic_analysis import DeterministicAnalysis
 
 
 class BotService:
@@ -44,6 +45,7 @@ class BotService:
         self.intent_detector = IntentDetector()
         self.response_formatter = ResponseFormatter()
         self.background_worker = BackgroundWorker()
+        self.deterministic = DeterministicAnalysis()
         
         # Initialize services (will be created with DB session when needed)
         self.watchlist_service = None
@@ -57,7 +59,7 @@ class BotService:
         if self.ai_provider is None:
             from app.utils.logger import get_logger
             logger = get_logger(__name__)
-            logger.warning("AI provider not configured. Set GOOGLE_API_KEY environment variable for free tier access to enable AI features.")
+            logger.warning("AI provider not configured. Using deterministic fallback mode. Set GOOGLE_API_KEY for AI enhancements.")
     
     def _get_ai_provider(self):
         """Get the configured AI provider. Returns None if no API key is available."""
@@ -244,13 +246,25 @@ class BotService:
         """Route intent to appropriate handler."""
         symbols = entities.get("symbols", [])
         
-        # Check if AI provider is available for AI-dependent intents
-        if self.ai_provider is None and intent in ["company_research", "market_analysis", "comparison", "news_request", "explanation", "document_chat", "daily_briefing"]:
-            return "🤖 AI features are not currently configured. Please configure a Google API key (GOOGLE_API_KEY) for free tier access to use this feature."
+        # Handle deterministic intents (no AI required)
+        if intent == "greeting":
+            return self.deterministic.get_greeting()
+        elif intent == "help":
+            return self.deterministic.get_help_text()
+        elif intent == "explanation":
+            concept = entities.get("concept")
+            if concept:
+                return await self._handle_explanation(concept)
         
+        # Handle stock lookup (works with or without AI)
         if intent == "stock_lookup" and symbols:
             return await self._handle_stock_lookup(symbols[0])
-        elif intent == "company_research" and symbols:
+        
+        # Check if AI provider is available for AI-dependent intents
+        if self.ai_provider is None and intent in ["company_research", "market_analysis", "comparison", "news_request", "document_chat", "daily_briefing"]:
+            return "🤖 This feature requires AI. Please configure GOOGLE_API_KEY for advanced features. Try 'help' to see what works without AI."
+        
+        if intent == "company_research" and symbols:
             return await self._handle_company_research(symbols[0])
         elif intent == "market_analysis":
             return await self._handle_market_analysis()
@@ -262,10 +276,6 @@ class BotService:
             return await self._handle_watchlist(entities, user_id)
         elif intent == "alert":
             return await self._handle_alert(entities, user_id)
-        elif intent == "explanation":
-            concept = entities.get("concept")
-            if concept:
-                return await self._handle_explanation(concept)
         elif intent == "document_chat":
             return await self._handle_document_chat(message_text, user_id)
         elif intent == "daily_briefing":
@@ -273,7 +283,7 @@ class BotService:
         
         # Default to conversation agent
         if self.ai_provider is None:
-            return "🤖 AI features are not currently configured. Please configure a Google API key (GOOGLE_API_KEY) for free tier access to use this feature."
+            return self.deterministic.get_unknown_response()
         try:
             return await self.conversation_agent.process_message(
                 message_text, history, user_context
@@ -282,25 +292,25 @@ class BotService:
             from app.utils.logger import get_logger
             logger = get_logger(__name__)
             logger.error(f"AI provider error during conversation: {str(e)}")
-            return "🤖 I'm having trouble connecting to my AI service right now. Please try again in a moment. The service may be temporarily unavailable."
+            return self.deterministic.get_unknown_response()
     
     async def _handle_stock_lookup(self, symbol: str) -> str:
         """Handle stock lookup intent."""
         try:
-            result = await self.finance_agent.get_stock_price(symbol)
-            if result.get("available", True):  # Default to True if key doesn't exist
-                analysis = await self.finance_agent.analyze_stock(symbol)
-                return self.response_formatter.format_stock_response(
-                    symbol=symbol,
-                    price_data=result,
-                    analysis=analysis.get("analysis", "Analysis unavailable")
-                )
+            # The finance_agent now handles AI fallback internally
+            result = await self.finance_agent.analyze_stock(symbol)
+            if result.get("data", {}).get("stock_price", {}).get("available", True):
+                analysis = result.get("analysis", "Analysis unavailable")
+                # Add note if not AI enhanced
+                if not result.get("ai_enhanced", True):
+                    analysis += "\n\n💡 (Data-based analysis - configure GOOGLE_API_KEY for AI-powered insights)"
+                return analysis
             return f"Unable to fetch data for {symbol}. Please check the symbol and try again."
-        except RuntimeError as e:
+        except Exception as e:
             from app.utils.logger import get_logger
             logger = get_logger(__name__)
-            logger.error(f"AI provider error during stock lookup: {str(e)}")
-            return f"📊 Stock data for {symbol.upper()} is available, but AI analysis is temporarily unavailable. Please try again later."
+            logger.error(f"Stock lookup error: {str(e)}")
+            return f"Error fetching stock data for {symbol}. Please try again later."
     
     async def _handle_company_research(self, symbol: str) -> str:
         """Handle company research intent."""
@@ -389,8 +399,27 @@ class BotService:
     
     async def _handle_explanation(self, concept: str) -> str:
         """Handle explanation intent."""
-        result = await self.explanation_service.explain_concept(concept)
-        return result.get("explanation", "Explanation unavailable")
+        # Handle common financial concepts deterministically
+        concept_lower = concept.lower()
+        if "p/e" in concept_lower or "pe ratio" in concept_lower or "price to earnings" in concept_lower:
+            return self.deterministic.explain_pe_ratio()
+        elif "dividend" in concept_lower:
+            return self.deterministic.explain_dividend()
+        elif "market cap" in concept_lower or "market capitalization" in concept_lower:
+            return self.deterministic.explain_market_cap()
+        
+        # Fall back to AI if available
+        if self.ai_provider:
+            try:
+                result = await self.explanation_service.explain_concept(concept)
+                return result.get("explanation", "Explanation unavailable")
+            except RuntimeError as e:
+                from app.utils.logger import get_logger
+                logger = get_logger(__name__)
+                logger.error(f"AI explanation failed: {str(e)}")
+                return "🤖 AI explanation unavailable. Try asking about P/E ratio, dividends, or market cap for deterministic explanations."
+        
+        return "🤖 This concept requires AI for explanation. Try asking about P/E ratio, dividends, or market cap."
     
     async def _handle_document_chat(self, message_text: str, user_id: int) -> str:
         """Handle document chat intent."""

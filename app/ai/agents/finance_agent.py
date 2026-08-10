@@ -1,6 +1,7 @@
 from typing import Optional, Dict, Any, List
 from app.ai.providers import BaseAIProvider
 from app.finance import MarketDataService, CompanyDataService, NewsService, AnalyticsService
+from app.finance.deterministic_analysis import DeterministicAnalysis
 from app.utils.ai_safety import get_safety_context, validate_financial_response
 
 
@@ -25,6 +26,24 @@ class FinanceAgent:
         company_overview = await self.company_data.get_company_overview(symbol)
         financial_metrics = await self.company_data.get_financial_metrics(symbol)
         company_news = await self.news_service.get_company_news(symbol, limit=5)
+        
+        # If no AI provider, use deterministic analysis
+        if self.ai_provider is None:
+            deterministic = DeterministicAnalysis()
+            analysis = deterministic.analyze_stock_data(stock_price)
+            return {
+                "symbol": symbol.upper(),
+                "analysis_type": analysis_type,
+                "analysis": analysis,
+                "data": {
+                    "stock_price": stock_price,
+                    "company_overview": company_overview,
+                    "financial_metrics": financial_metrics,
+                    "news": company_news
+                },
+                "confidence": 0.7 if stock_price.get("available", True) else 0.3,
+                "ai_enhanced": False
+            }
         
         # Build context for AI
         data_context = f"""Stock Data for {symbol.upper()}:
@@ -59,24 +78,45 @@ Use the provided real data to give specific, data-driven insights. Include:
 
 Be concise and specific. If data is unavailable, clearly state that limitation."""
         
-        response = await self.ai_provider.generate_response(
-            prompt=f"Analyze {symbol.upper()} using this data:\n{data_context}",
-            context=system_prompt,
-            temperature=0.5
-        )
-        
-        return {
-            "symbol": symbol.upper(),
-            "analysis_type": analysis_type,
-            "analysis": response,
-            "data": {
-                "stock_price": stock_price,
-                "company_overview": company_overview,
-                "financial_metrics": financial_metrics,
-                "news": company_news
-            },
-            "confidence": 0.9 if stock_price.get("available") else 0.6
-        }
+        try:
+            response = await self.ai_provider.generate_response(
+                prompt=f"Analyze {symbol.upper()} using this data:\n{data_context}",
+                context=system_prompt,
+                temperature=0.5
+            )
+            return {
+                "symbol": symbol.upper(),
+                "analysis_type": analysis_type,
+                "analysis": response,
+                "data": {
+                    "stock_price": stock_price,
+                    "company_overview": company_overview,
+                    "financial_metrics": financial_metrics,
+                    "news": company_news
+                },
+                "confidence": 0.9 if stock_price.get("available") else 0.6,
+                "ai_enhanced": True
+            }
+        except Exception as e:
+            # Fallback to deterministic analysis if AI fails
+            from app.utils.logger import get_logger
+            logger = get_logger(__name__)
+            logger.warning(f"AI analysis failed for {symbol}, falling back to deterministic: {str(e)}")
+            deterministic = DeterministicAnalysis()
+            analysis = deterministic.analyze_stock_data(stock_price)
+            return {
+                "symbol": symbol.upper(),
+                "analysis_type": analysis_type,
+                "analysis": analysis,
+                "data": {
+                    "stock_price": stock_price,
+                    "company_overview": company_overview,
+                    "financial_metrics": financial_metrics,
+                    "news": company_news
+                },
+                "confidence": 0.7 if stock_price.get("available", True) else 0.3,
+                "ai_enhanced": False
+            }
     
     async def get_market_overview(self, focus: str = "general") -> str:
         """Get market overview and trends with real data."""
@@ -335,7 +375,19 @@ Be concise, specific, and data-driven. Avoid generic advice. If data is unavaila
                 "available": False
             }
         
-        # Build context
+        # If no AI provider, use deterministic analysis
+        if self.ai_provider is None:
+            deterministic = DeterministicAnalysis()
+            analysis = deterministic.analyze_stock_data(price_data)
+            return {
+                "symbol": symbol.upper(),
+                "price_analysis": analysis,
+                "price_data": price_data,
+                "available": True,
+                "ai_enhanced": False
+            }
+        
+        # Build context for AI
         data_context = f"""Stock Price for {symbol.upper()}:
 Current Price: {price_data.get('current_price', 'N/A')}
 Previous Close: {price_data.get('previous_close', 'N/A')}
@@ -355,15 +407,30 @@ Use the provided data to give:
 
 Be concise and specific."""
         
-        response = await self.ai_provider.generate_response(
-            prompt=f"Provide stock price analysis using this data:\n{data_context}",
-            context=system_prompt,
-            temperature=0.5
-        )
-        
-        return {
-            "symbol": symbol.upper(),
-            "price_analysis": response,
-            "price_data": price_data,
-            "available": True
-        }
+        try:
+            response = await self.ai_provider.generate_response(
+                prompt=f"Provide stock price analysis using this data:\n{data_context}",
+                context=system_prompt,
+                temperature=0.5
+            )
+            return {
+                "symbol": symbol.upper(),
+                "price_analysis": response,
+                "price_data": price_data,
+                "available": True,
+                "ai_enhanced": True
+            }
+        except Exception as e:
+            # Fallback to deterministic analysis if AI fails
+            from app.utils.logger import get_logger
+            logger = get_logger(__name__)
+            logger.warning(f"AI price analysis failed for {symbol}, falling back to deterministic: {str(e)}")
+            deterministic = DeterministicAnalysis()
+            analysis = deterministic.analyze_stock_data(price_data)
+            return {
+                "symbol": symbol.upper(),
+                "price_analysis": analysis,
+                "price_data": price_data,
+                "available": True,
+                "ai_enhanced": False
+            }

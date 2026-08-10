@@ -30,7 +30,9 @@ class IntentDetector:
             "stock_lookup": [
                 {"patterns": [r"stock price of\s+(.+)", r"price of\s+(.+)", r"current price\s+(.+)"], "extract": True},
                 {"patterns": [r"how is\s+(.+)\s+doing", r"what's\s+(.+)\s+trading at"], "extract": True},
-                {"patterns": [r"quote\s+(.+)", r"ticker\s+(.+)"], "extract": True}
+                {"patterns": [r"quote\s+(.+)", r"ticker\s+(.+)"], "extract": True},
+                {"patterns": [r"analyze\s+(.+)\s+stock", r"(.+)\s+stock"], "extract": True},
+                {"patterns": [r"(.+)\s+stock price", r"(.+)\s+quote"], "extract": True}
             ],
             "market_analysis": [
                 {"patterns": [r"market update", r"market overview", r"how's the market", r"market today"], "extract": False},
@@ -81,10 +83,11 @@ class IntentDetector:
             ],
             "explanation": [
                 {"patterns": [r"what is\s+(.+)", r"explain\s+(.+)", r"what does\s+(.+)mean"], "extract": True},
-                {"patterns": [r"how does\s+(.+)work", r"why is\s+(.+)important"], "extract": True}
+                {"patterns": [r"how does\s+(.+)work", r"why is\s+(.+)important"], "extract": True},
+                {"patterns": [r"(.+)\s+ratio", r"(.+)\s+mean"], "extract": True}
             ],
             "greeting": [
-                {"patterns": [r"hello", r"hi", r"hey", r"good morning", r"good afternoon", r"good evening"], "extract": False}
+                {"patterns": [r"hello", r"hi", r"hey", r"good morning", r"good afternoon", r"good evening", r"thanks", r"thank you"], "extract": False}
             ],
             "help": [
                 {"patterns": [r"help", r"what can you do", r"commands", r"features"], "extract": False}
