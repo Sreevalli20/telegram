@@ -238,7 +238,8 @@ class BotService:
         symbols = entities.get("symbols", [])
         
         # Check if AI provider is available for AI-dependent intents
-        if self.ai_provider is None and intent in ["stock_lookup", "company_research", "market_analysis", "comparison", "news_request", "explanation", "document_chat", "daily_briefing"]:
+        # Note: stock_lookup now has a fallback that works without AI
+        if self.ai_provider is None and intent in ["company_research", "market_analysis", "comparison", "news_request", "explanation", "document_chat", "daily_briefing"]:
             return "🤖 AI features are not currently configured. Please configure an AI provider API key (OPENAI_API_KEY, ANTHROPIC_API_KEY, or GOOGLE_API_KEY) to use this feature."
         
         if intent == "stock_lookup" and symbols:
@@ -266,7 +267,7 @@ class BotService:
         
         # Default to conversation agent
         if self.ai_provider is None:
-            return "🤖 AI features are not currently configured. Please configure an AI provider API key (OPENAI_API_KEY, ANTHROPIC_API_KEY, or GOOGLE_API_KEY) to use this feature."
+            return self._handle_basic_conversation(message_text, intent, entities)
         return await self.conversation_agent.process_message(
             message_text, history, user_context
         )
@@ -274,14 +275,98 @@ class BotService:
     async def _handle_stock_lookup(self, symbol: str) -> str:
         """Handle stock lookup intent."""
         result = await self.finance_agent.get_stock_price(symbol)
-        if result.get("available"):
-            analysis = await self.finance_agent.analyze_stock(symbol)
-            return self.response_formatter.format_stock_response(
-                symbol=symbol,
-                price_data=result,
-                analysis=analysis.get("analysis", "Analysis unavailable")
-            )
+        if result.get("available", True):  # Default to True if key doesn't exist
+            # If AI provider is available, get full analysis
+            if self.ai_provider:
+                analysis = await self.finance_agent.analyze_stock(symbol)
+                return self.response_formatter.format_stock_response(
+                    symbol=symbol,
+                    price_data=result,
+                    analysis=analysis.get("analysis", "Analysis unavailable")
+                )
+            else:
+                # Fallback: Show raw data without AI analysis
+                return self._format_basic_stock_response(symbol, result)
         return f"Unable to fetch data for {symbol}. Please check the symbol and try again."
+    
+    def _format_basic_stock_response(self, symbol: str, price_data: dict) -> str:
+        """Format basic stock data without AI analysis."""
+        symbol = symbol.upper()
+        price = price_data.get('current_price', 'N/A')
+        change = price_data.get('change', 'N/A')
+        change_percent = price_data.get('change_percent', 'N/A')
+        market_cap = price_data.get('market_cap', 'N/A')
+        volume = price_data.get('volume', 'N/A')
+        
+        # Format market cap for readability
+        if market_cap and isinstance(market_cap, (int, float)):
+            if market_cap >= 1e12:
+                market_cap = f"${market_cap/1e12:.2f}T"
+            elif market_cap >= 1e9:
+                market_cap = f"${market_cap/1e9:.2f}B"
+            elif market_cap >= 1e6:
+                market_cap = f"${market_cap/1e6:.2f}M"
+            else:
+                market_cap = f"${market_cap:,.0f}"
+        
+        # Format volume for readability
+        if volume and isinstance(volume, (int, float)):
+            if volume >= 1e6:
+                volume = f"{volume/1e6:.2f}M"
+            elif volume >= 1e3:
+                volume = f"{volume/1e3:.2f}K"
+            else:
+                volume = f"{volume:,.0f}"
+        
+        response = f"📊 {symbol} Stock Data\n\n"
+        response += f"💰 Price: ${price}\n"
+        if change is not None:
+            change_str = f"+{change:.2f}" if change > 0 else f"{change:.2f}"
+            percent_str = f"+{change_percent:.2f}%" if change_percent > 0 else f"{change_percent:.2f}%"
+            emoji = "📈" if change > 0 else "📉"
+            response += f"{emoji} Change: {change_str} ({percent_str})\n"
+        response += f"🏢 Market Cap: {market_cap}\n"
+        response += f"📦 Volume: {volume}\n\n"
+        response += "💡 *AI analysis unavailable - configure API key for insights*"
+        
+        return response
+    
+    def _handle_basic_conversation(self, message_text: str, intent: str, entities: dict) -> str:
+        """Handle basic conversation without AI provider."""
+        message_lower = message_text.lower().strip()
+        
+        # Handle greetings
+        if any(greeting in message_lower for greeting in ["hello", "hi", "hey", "greetings"]):
+            return ("👋 Hello! I'm ATLAS, your AI financial assistant. I can help you with:\n\n"
+                    "📊 Stock analysis (e.g., 'analyze Apple' or 'AAPL')\n"
+                    "📰 Market news and updates\n"
+                    "📈 Company research\n"
+                    "⚖️ Stock comparisons\n"
+                    "📋 Watchlist management\n\n"
+                    "💡 *Advanced AI features require an API key, but basic stock data is available!*")
+        
+        # Handle thanks
+        if any(word in message_lower for word in ["thank", "thanks", "appreciate"]):
+            return "😊 You're welcome! Let me know if you need any financial information."
+        
+        # Handle help requests
+        if any(word in message_lower for word in ["help", "what can you do", "capabilities"]):
+            return ("🤖 ATLAS can help with:\n\n"
+                    "📊 **Stock Analysis**: Get real-time stock prices and basic data\n"
+                    "📰 **Market News**: Stay updated with financial news\n"
+                    "📈 **Company Research**: Deep dive into company fundamentals\n"
+                    "⚖️ **Comparisons**: Compare multiple stocks\n"
+                    "📋 **Watchlist**: Track your favorite stocks\n\n"
+                    "Just ask about any stock symbol or company name!")
+        
+        # Handle how are you
+        if any(word in message_lower for word in ["how are you", "how's it going"]):
+            return "🤖 I'm functioning perfectly and ready to help with your financial queries! How can I assist you today?"
+        
+        # Default response for unrecognized messages
+        return (f"🤔 I understand you said: '{message_text}'\n\n"
+                "For the best experience, try asking about a specific stock (e.g., 'analyze Apple', 'AAPL price') or use commands like /help.\n\n"
+                "💡 *Advanced AI conversation requires an API key, but stock data works without it!*")
     
     async def _handle_company_research(self, symbol: str) -> str:
         """Handle company research intent."""
