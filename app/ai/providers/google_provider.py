@@ -1,12 +1,15 @@
 from typing import Optional, Dict, Any
 import google.generativeai as genai
 from app.ai.providers.base_provider import BaseAIProvider
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class GoogleProvider(BaseAIProvider):
     """Google (Gemini) provider implementation."""
     
-    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-1.5-flash"):
+    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-2.5-flash"):
         super().__init__(api_key)
         self.model_name = model
         self._model = None
@@ -35,15 +38,18 @@ class GoogleProvider(BaseAIProvider):
         """Generate a response from Google Gemini."""
         full_prompt = f"{context}\n\n{prompt}" if context else prompt
         
-        response = await self.model.generate_content_async(
-            full_prompt,
-            generation_config=genai.types.GenerationConfig(
-                temperature=temperature,
-                max_output_tokens=max_tokens
+        try:
+            response = await self.model.generate_content_async(
+                full_prompt,
+                generation_config=genai.types.GenerationConfig(
+                    temperature=temperature,
+                    max_output_tokens=max_tokens
+                )
             )
-        )
-        
-        return response.text
+            return response.text
+        except Exception as e:
+            logger.error(f"Google Gemini API error: {type(e).__name__}: {str(e)}")
+            raise RuntimeError(f"AI provider error: {str(e)}") from e
     
     async def summarize(
         self,
@@ -53,12 +59,15 @@ class GoogleProvider(BaseAIProvider):
         """Summarize text using Google Gemini."""
         prompt = f"Summarize the following text in {max_length} words or less:\n\n{text}"
         
-        response = await self.model.generate_content_async(
-            prompt,
-            generation_config=genai.types.GenerationConfig(temperature=0.3)
-        )
-        
-        return response.text
+        try:
+            response = await self.model.generate_content_async(
+                prompt,
+                generation_config=genai.types.GenerationConfig(temperature=0.3)
+            )
+            return response.text
+        except Exception as e:
+            logger.error(f"Google Gemini summarize error: {type(e).__name__}: {str(e)}")
+            raise RuntimeError(f"AI provider error: {str(e)}") from e
     
     async def analyze_document(
         self,
@@ -68,16 +77,19 @@ class GoogleProvider(BaseAIProvider):
         """Analyze a document using Google Gemini."""
         prompt = f"You are a financial analyst. Analyze the following {analysis_type} document:\n\n{document_text}"
         
-        response = await self.model.generate_content_async(
-            prompt,
-            generation_config=genai.types.GenerationConfig(temperature=0.3)
-        )
-        
-        return {
-            "analysis": response.text,
-            "provider": "google",
-            "model": self.model_name
-        }
+        try:
+            response = await self.model.generate_content_async(
+                prompt,
+                generation_config=genai.types.GenerationConfig(temperature=0.3)
+            )
+            return {
+                "analysis": response.text,
+                "provider": "google",
+                "model": self.model_name
+            }
+        except Exception as e:
+            logger.error(f"Google Gemini analyze_document error: {type(e).__name__}: {str(e)}")
+            raise RuntimeError(f"AI provider error: {str(e)}") from e
     
     async def extract_information(
         self,
@@ -87,13 +99,16 @@ class GoogleProvider(BaseAIProvider):
         """Extract specific information from text."""
         prompt = f"Extract {information_type} from the following text. Return as structured JSON:\n\n{text}"
         
-        response = await self.model.generate_content_async(
-            prompt,
-            generation_config=genai.types.GenerationConfig(temperature=0.1)
-        )
-        
-        import json
-        return json.loads(response.text)
+        try:
+            response = await self.model.generate_content_async(
+                prompt,
+                generation_config=genai.types.GenerationConfig(temperature=0.1)
+            )
+            import json
+            return json.loads(response.text)
+        except Exception as e:
+            logger.error(f"Google Gemini extract_information error: {type(e).__name__}: {str(e)}")
+            raise RuntimeError(f"AI provider error: {str(e)}") from e
     
     async def chat_completion(
         self,
@@ -108,13 +123,16 @@ class GoogleProvider(BaseAIProvider):
             role = "user" if msg["role"] == "user" else "model"
             chat_history.append({"role": role, "parts": [msg["content"]]})
         
-        chat = self.model.start_chat(history=chat_history)
-        response = await chat.send_message_async(
-            messages[-1]["content"],
-            generation_config=genai.types.GenerationConfig(
-                temperature=temperature,
-                max_output_tokens=max_tokens
+        try:
+            chat = self.model.start_chat(history=chat_history)
+            response = await chat.send_message_async(
+                messages[-1]["content"],
+                generation_config=genai.types.GenerationConfig(
+                    temperature=temperature,
+                    max_output_tokens=max_tokens
+                )
             )
-        )
-        
-        return response.text
+            return response.text
+        except Exception as e:
+            logger.error(f"Google Gemini chat_completion error: {type(e).__name__}: {str(e)}")
+            raise RuntimeError(f"AI provider error: {str(e)}") from e

@@ -183,15 +183,22 @@ class BotService:
             )
             
             # Route to appropriate handler
-            response = await self._route_intent(
-                intent=intent,
-                entities=entities,
-                message_text=message_text,
-                user_id=user.id,
-                db_user=user,
-                history=history,
-                user_context=user_context
-            )
+            try:
+                response = await self._route_intent(
+                    intent=intent,
+                    entities=entities,
+                    message_text=message_text,
+                    user_id=user.id,
+                    db_user=user,
+                    history=history,
+                    user_context=user_context
+                )
+            except RuntimeError as e:
+                # Handle AI provider errors gracefully
+                from app.utils.logger import get_logger
+                logger = get_logger(__name__)
+                logger.error(f"AI provider error during intent routing: {str(e)}")
+                response = "🤖 I'm having trouble connecting to my AI service right now. Please try again in a moment. The service may be temporarily unavailable."
             
             # Format response
             suggestions = self.response_formatter.generate_suggestions(
@@ -267,52 +274,88 @@ class BotService:
         # Default to conversation agent
         if self.ai_provider is None:
             return "🤖 AI features are not currently configured. Please configure a Google API key (GOOGLE_API_KEY) for free tier access to use this feature."
-        return await self.conversation_agent.process_message(
-            message_text, history, user_context
-        )
+        try:
+            return await self.conversation_agent.process_message(
+                message_text, history, user_context
+            )
+        except RuntimeError as e:
+            from app.utils.logger import get_logger
+            logger = get_logger(__name__)
+            logger.error(f"AI provider error during conversation: {str(e)}")
+            return "🤖 I'm having trouble connecting to my AI service right now. Please try again in a moment. The service may be temporarily unavailable."
     
     async def _handle_stock_lookup(self, symbol: str) -> str:
         """Handle stock lookup intent."""
-        result = await self.finance_agent.get_stock_price(symbol)
-        if result.get("available", True):  # Default to True if key doesn't exist
-            analysis = await self.finance_agent.analyze_stock(symbol)
-            return self.response_formatter.format_stock_response(
-                symbol=symbol,
-                price_data=result,
-                analysis=analysis.get("analysis", "Analysis unavailable")
-            )
-        return f"Unable to fetch data for {symbol}. Please check the symbol and try again."
+        try:
+            result = await self.finance_agent.get_stock_price(symbol)
+            if result.get("available", True):  # Default to True if key doesn't exist
+                analysis = await self.finance_agent.analyze_stock(symbol)
+                return self.response_formatter.format_stock_response(
+                    symbol=symbol,
+                    price_data=result,
+                    analysis=analysis.get("analysis", "Analysis unavailable")
+                )
+            return f"Unable to fetch data for {symbol}. Please check the symbol and try again."
+        except RuntimeError as e:
+            from app.utils.logger import get_logger
+            logger = get_logger(__name__)
+            logger.error(f"AI provider error during stock lookup: {str(e)}")
+            return f"📊 Stock data for {symbol.upper()} is available, but AI analysis is temporarily unavailable. Please try again later."
     
     async def _handle_company_research(self, symbol: str) -> str:
         """Handle company research intent."""
         if self.ai_provider is None:
             return "🤖 AI features are not currently configured. Please configure a Google API key (GOOGLE_API_KEY) for free tier access to use this feature."
-        result = await self.finance_agent.get_company_research(symbol)
-        return result.get("analysis", "Research unavailable")
+        try:
+            result = await self.finance_agent.get_company_research(symbol)
+            return result.get("analysis", "Research unavailable")
+        except RuntimeError as e:
+            from app.utils.logger import get_logger
+            logger = get_logger(__name__)
+            logger.error(f"AI provider error during company research: {str(e)}")
+            return f"📈 Company research for {symbol.upper()} is temporarily unavailable. Please try again later."
     
     async def _handle_market_analysis(self) -> str:
         """Handle market analysis intent."""
         if self.ai_provider is None:
             return "🤖 AI features are not currently configured. Please configure a Google API key (GOOGLE_API_KEY) for free tier access to use this feature."
-        result = await self.finance_agent.get_market_overview()
-        return result.get("analysis", "Market overview unavailable")
+        try:
+            result = await self.finance_agent.get_market_overview()
+            return result.get("analysis", "Market overview unavailable")
+        except RuntimeError as e:
+            from app.utils.logger import get_logger
+            logger = get_logger(__name__)
+            logger.error(f"AI provider error during market analysis: {str(e)}")
+            return "📊 Market analysis is temporarily unavailable. Please try again later."
     
     async def _handle_comparison(self, symbols: list) -> str:
         """Handle comparison intent."""
         if self.ai_provider is None:
             return "🤖 AI features are not currently configured. Please configure a Google API key (GOOGLE_API_KEY) for free tier access to use this feature."
-        result = await self.finance_agent.compare_companies(symbols[0], symbols[1])
-        return result.get("comparison_analysis", "Comparison unavailable")
+        try:
+            result = await self.finance_agent.compare_companies(symbols[0], symbols[1])
+            return result.get("comparison_analysis", "Comparison unavailable")
+        except RuntimeError as e:
+            from app.utils.logger import get_logger
+            logger = get_logger(__name__)
+            logger.error(f"AI provider error during comparison: {str(e)}")
+            return "⚖️ Stock comparison is temporarily unavailable. Please try again later."
     
     async def _handle_news_request(self, symbol: Optional[str]) -> str:
         """Handle news request intent."""
         if self.ai_provider is None:
             return "🤖 AI features are not currently configured. Please configure a Google API key (GOOGLE_API_KEY) for free tier access to use this feature."
-        if symbol:
-            result = await self.finance_agent.get_financial_news(symbol)
-        else:
-            result = await self.finance_agent.get_financial_news()
-        return result.get("analysis", "News unavailable")
+        try:
+            if symbol:
+                result = await self.finance_agent.get_financial_news(symbol)
+            else:
+                result = await self.finance_agent.get_financial_news()
+            return result.get("analysis", "News unavailable")
+        except RuntimeError as e:
+            from app.utils.logger import get_logger
+            logger = get_logger(__name__)
+            logger.error(f"AI provider error during news request: {str(e)}")
+            return "📰 Financial news is temporarily unavailable. Please try again later."
     
     async def _handle_watchlist(self, entities: Dict[str, Any], user_id: int) -> str:
         """Handle watchlist intent."""
