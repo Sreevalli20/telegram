@@ -215,7 +215,7 @@ async def bot_status():
     
     status = {
         "status": "running" if bot.running else "stopped",
-        "bot_id": bot.id,
+        "bot_id": bot.bot.id,
         "mode": "webhook" if settings.webhook_mode else "polling"
     }
     
