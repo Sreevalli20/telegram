@@ -1,6 +1,6 @@
 from typing import List, Optional
 from sqlalchemy.orm import Session
-from app.models.message import Message, MessageRole
+from app.models.message import Message, MessageRole, MessageType
 from app.repositories.base_repository import BaseRepository
 
 
@@ -44,7 +44,7 @@ class MessageRepository(BaseRepository[Message]):
         self, 
         conversation_id: int, 
         content: str, 
-        message_type: str = "text",
+        message_type: MessageType = MessageType.TEXT,
         file_id: Optional[str] = None
     ) -> Message:
         """Create a user message."""
@@ -67,7 +67,7 @@ class MessageRepository(BaseRepository[Message]):
         return self.create(
             conversation_id=conversation_id,
             role=MessageRole.ASSISTANT,
-            message_type="text",
+            message_type=MessageType.TEXT,
             content=content,
             tokens_used=tokens_used,
             processing_time_ms=processing_time_ms

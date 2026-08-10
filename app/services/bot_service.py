@@ -1,6 +1,7 @@
 from typing import Optional, Dict, Any
 from sqlalchemy.orm import Session
 from app.models import get_db
+from app.models.message import MessageType
 from app.repositories import (
     UserRepository,
     ConversationRepository,
@@ -141,7 +142,7 @@ class BotService:
             message_repo.create_user_message(
                 conversation_id=conversation.id,
                 content=message_text,
-                message_type="text"
+                message_type=MessageType.TEXT
             )
             
             # Get conversation history
